@@ -1,8 +1,13 @@
 import os
+import logging
 from typing import AsyncGenerator
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.models import Base
+from sqlalchemy import select
+from app.models import Base, User, UserRole
+from app.security import hash_password
+
+logger = logging.getLogger("astranex.database")
 
 RAW_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./astranex.db")
 
@@ -60,6 +65,24 @@ AsyncSessionLocal = async_sessionmaker(
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Seed default admin user if none exists in production DB
+    async with AsyncSessionLocal() as session:
+        stmt = select(User).where(User.role == UserRole.ADMIN)
+        res = await session.execute(stmt)
+        admin = res.scalar_one_or_none()
+
+        if not admin:
+            logger.info("Seeding default administrator account...")
+            default_admin = User(
+                email="admin@astranex.def",
+                password_hash=hash_password("admin123"),
+                full_name="System Administrator",
+                role=UserRole.ADMIN
+            )
+            session.add(default_admin)
+            await session.commit()
+            logger.info("Default admin created: admin@astranex.def / admin123")
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
