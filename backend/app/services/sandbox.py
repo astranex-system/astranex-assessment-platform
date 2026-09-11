@@ -1,6 +1,16 @@
 import logging
+import sys
+import os
 from typing import List, Dict, Any
-from sandbox_runner.runner import IsolatedCodeRunner
+
+# Add root directory to sys.path if sandbox_runner isn't directly importable
+try:
+    from sandbox_runner.runner import IsolatedCodeRunner
+except ModuleNotFoundError:
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    from sandbox_runner.runner import IsolatedCodeRunner
 
 logger = logging.getLogger("astranex.sandbox")
 
