@@ -290,8 +290,7 @@ export default function AssessmentWorkspace() {
         padding: "0 1.5rem"
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Shield size={22} color="var(--accent-cyan)" />
-          <span style={{ fontWeight: 700, fontSize: "1.05rem" }}>AstraNex Defence</span>
+          <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "36px", objectFit: "contain", borderRadius: "4px" }} />
           <span style={{ color: "var(--border-color)" }}>|</span>
           <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>{session?.assessment?.title}</span>
         </div>

@@ -194,9 +194,8 @@ export default function AdminDashboard() {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", backgroundColor: "var(--bg-primary)" }}>
         <div style={{ maxWidth: "400px", width: "100%", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "2rem", borderRadius: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.5rem" }}>
-            <Lock color="var(--accent-cyan)" />
-            <h2 style={{ fontSize: "1.2rem", fontWeight: 700 }}>AstraNex Admin Portal</h2>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+            <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "54px", objectFit: "contain", borderRadius: "4px" }} />
           </div>
 
           {authError && <div style={{ color: "var(--accent-red)", fontSize: "0.85rem", marginBottom: "1rem" }}>{authError}</div>}
@@ -237,8 +236,8 @@ export default function AdminDashboard() {
     <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Shield color="var(--accent-cyan)" />
-          <h1 style={{ fontSize: "1.4rem", fontWeight: 700 }}>AstraNex Defence Admin Console</h1>
+          <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "42px", objectFit: "contain", borderRadius: "4px" }} />
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Admin Console</h1>
         </div>
 
         <nav style={{ display: "flex", gap: "0.75rem" }}>

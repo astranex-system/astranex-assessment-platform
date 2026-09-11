@@ -77,19 +77,12 @@ export default function CandidatePortalLanding() {
         padding: "2.5rem 2rem",
         boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem" }}>
-          <div style={{
-            background: "rgba(6, 182, 212, 0.1)",
-            padding: "0.75rem",
-            borderRadius: "8px",
-            border: "1px solid rgba(6, 182, 212, 0.3)"
-          }}>
-            <Shield size={28} color="var(--accent-cyan)" />
-          </div>
-          <div>
-            <h1 style={{ fontSize: "1.35rem", fontWeight: 700, letterSpacing: "-0.02em" }}>AstraNex Defence</h1>
-            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Secure Technical Evaluation Environment</p>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1.5rem" }}>
+          <img
+            src="/logo.jpg"
+            alt="AstraNex Defence"
+            style={{ height: "64px", objectFit: "contain", borderRadius: "6px" }}
+          />
         </div>
 
         <div style={{
