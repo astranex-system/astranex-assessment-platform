@@ -6,13 +6,13 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete, update
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import (
     User, UserRole, Assessment, Question, QuestionOption, QuestionAnswer,
-    Candidate, AssessmentToken, AssessmentSession, Submission, EvaluationResult, AuditLog, QuestionType
+    Candidate, AssessmentToken, AssessmentSession, Submission, EvaluationResult, AuditLog, QuestionType, SessionStatus
 )
 from app.schemas.admin import (
     AdminLoginRequest, AdminTokenOut, AssessmentCreate, QuestionCreate,
@@ -56,6 +56,35 @@ async def admin_login(payload: AdminLoginRequest, db: AsyncSession = Depends(get
         role=user.role
     )
 
+@router.get("/assessments")
+async def list_assessments(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lists all assessment definitions with question counts and session stats."""
+    stmt = select(Assessment).options(selectinload(Assessment.questions)).order_by(Assessment.created_at.desc())
+    res = await db.execute(stmt)
+    assessments = res.scalars().all()
+
+    out = []
+    for asm in assessments:
+        sess_stmt = select(func.count(AssessmentSession.id)).where(AssessmentSession.assessment_id == asm.id)
+        sess_res = await db.execute(sess_stmt)
+        session_count = sess_res.scalar_one()
+
+        out.append({
+            "id": asm.id,
+            "title": asm.title,
+            "description": asm.description,
+            "duration_minutes": asm.duration_minutes,
+            "result_visibility": asm.result_visibility,
+            "question_count": len(asm.questions),
+            "total_marks": sum(q.marks for q in asm.questions),
+            "session_count": session_count,
+            "created_at": asm.created_at
+        })
+    return out
+
 @router.post("/assessments")
 async def create_assessment(
     payload: AssessmentCreate,
@@ -77,7 +106,65 @@ async def create_assessment(
     await db.refresh(assessment)
 
     await log_audit_event(db, "CREATE_ASSESSMENT", f"assessment:{assessment.id}", actor_id=admin.id, actor_role=admin.role.value)
-    return {"id": assessment.id, "title": assessment.title, "message": "Assessment created."}
+    return {"id": assessment.id, "title": assessment.title, "message": "Assessment created successfully."}
+
+@router.delete("/assessments/{assessment_id}")
+async def delete_assessment(
+    assessment_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Deletes an assessment and all associated questions/sessions."""
+    stmt = select(Assessment).where(Assessment.id == assessment_id)
+    res = await db.execute(stmt)
+    asm = res.scalar_one_or_none()
+    if not asm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
+
+    await db.delete(asm)
+    await db.commit()
+
+    await log_audit_event(db, "DELETE_ASSESSMENT", f"assessment:{assessment_id}", actor_id=admin.id, actor_role=admin.role.value)
+    return {"message": "Assessment deleted successfully."}
+
+@router.get("/assessments/{assessment_id}/questions")
+async def list_assessment_questions_for_admin(
+    assessment_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieves all questions for an assessment including secret answer keys for editing."""
+    stmt = (
+        select(Question)
+        .options(selectinload(Question.options), selectinload(Question.answer))
+        .where(Question.assessment_id == assessment_id)
+        .order_by(Question.display_order)
+    )
+    res = await db.execute(stmt)
+    questions = res.scalars().all()
+
+    out = []
+    for q in questions:
+        ans = q.answer
+        opts = [
+            {
+                "id": opt.id,
+                "option_text": opt.option_text,
+                "display_order": opt.display_order,
+                "is_correct": (ans and ans.correct_option_id == opt.id)
+            } for opt in q.options
+        ]
+        out.append({
+            "id": q.id,
+            "question_text": q.question_text,
+            "question_type": q.question_type,
+            "marks": q.marks,
+            "display_order": q.display_order,
+            "options": opts,
+            "hidden_test_cases": ans.hidden_test_cases if ans else [],
+            "rubric_text": ans.rubric_text if ans else None
+        })
+    return out
 
 @router.post("/questions")
 async def create_question(
@@ -86,9 +173,7 @@ async def create_question(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Creates question, public options, and populates the secret QuestionAnswer table (answer key / test cases).
-    """
+    """Creates a new question with secret server-side answer keys."""
     asm_stmt = select(Assessment).where(Assessment.id == assessment_id)
     asm_res = await db.execute(asm_stmt)
     if not asm_res.scalar_one_or_none():
@@ -129,7 +214,26 @@ async def create_question(
     await db.refresh(question)
 
     await log_audit_event(db, "CREATE_QUESTION", f"question:{question.id}", actor_id=admin.id, actor_role=admin.role.value)
-    return {"id": question.id, "message": "Question created with secret answer key stored server-side."}
+    return {"id": question.id, "message": "Question created successfully."}
+
+@router.delete("/questions/{question_id}")
+async def delete_question(
+    question_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Deletes a single question and its associated options and answer key."""
+    stmt = select(Question).where(Question.id == question_id)
+    res = await db.execute(stmt)
+    q = res.scalar_one_or_none()
+    if not q:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
+
+    await db.delete(q)
+    await db.commit()
+
+    await log_audit_event(db, "DELETE_QUESTION", f"question:{question_id}", actor_id=admin.id, actor_role=admin.role.value)
+    return {"message": "Question deleted successfully."}
 
 @router.post("/questions/upload-csv")
 async def upload_questions_csv(
@@ -138,11 +242,7 @@ async def upload_questions_csv(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Parses a CSV file containing questions (coding or MCQ), extracts test cases,
-    and populates question records along with secret server-side answer keys.
-    CSV format headers: type,section,topic,subTopic,tags,questionText,language,testCases,marks,difficulty,timeLimit,memoryLimit
-    """
+    """Bulk imports questions from a CSV file."""
     asm_stmt = select(Assessment).where(Assessment.id == assessment_id)
     asm_res = await db.execute(asm_stmt)
     if not asm_res.scalar_one_or_none():
@@ -172,7 +272,6 @@ async def upload_questions_csv(
         db.add(question)
         await db.flush()
 
-        # Parse test cases JSON string if present
         tc_json_raw = row.get("testCases", "[]")
         test_cases_parsed = []
         if tc_json_raw:
@@ -181,7 +280,6 @@ async def upload_questions_csv(
             except Exception as e:
                 logger.warning(f"Failed to parse testCases JSON in CSV row {idx}: {e}")
 
-        # Map test cases into standard hidden_test_cases format
         hidden_test_cases = []
         for tc in test_cases_parsed:
             hidden_test_cases.append({
@@ -223,9 +321,7 @@ async def generate_candidate_invite(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Generates single-use cryptographically secure candidate token. Stores only SHA-256 hash in DB.
-    """
+    """Generates single-use cryptographically secure candidate token."""
     cand_stmt = select(Candidate).where(Candidate.email == payload.candidate_email)
     cand_res = await db.execute(cand_stmt)
     candidate = cand_res.scalar_one_or_none()
@@ -261,6 +357,68 @@ async def generate_candidate_invite(
         assessment_link=f"/assessment?token={raw_token}",
         expires_at=expires_at
     )
+
+@router.get("/leaderboard")
+async def get_exam_leaderboard(
+    assessment_id: Optional[str] = Query(None),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Computes live exam leaderboard rankings across candidate sessions.
+    Ranks by score, completion time, and focus loss integrity.
+    """
+    stmt = (
+        select(AssessmentSession)
+        .options(
+            selectinload(AssessmentSession.candidate),
+            selectinload(AssessmentSession.results),
+            selectinload(AssessmentSession.submissions)
+        )
+    )
+    if assessment_id:
+        stmt = stmt.where(AssessmentSession.assessment_id == assessment_id)
+
+    stmt = stmt.order_by(AssessmentSession.started_at.desc())
+    res = await db.execute(stmt)
+    sessions = res.scalars().all()
+
+    leaderboard = []
+    for sess in sessions:
+        asm_stmt = select(Assessment).options(selectinload(Assessment.questions)).where(Assessment.id == sess.assessment_id)
+        asm_res = await db.execute(asm_stmt)
+        asm = asm_res.scalar_one_or_none()
+        if not asm:
+            continue
+
+        total_score = sum(r.score_earned for r in sess.results)
+        max_marks = sum(q.marks for q in asm.questions)
+        pct = round((total_score / max_marks * 100), 1) if max_marks > 0 else 0.0
+
+        leaderboard.append({
+            "session_id": sess.id,
+            "candidate_name": sess.candidate.full_name,
+            "candidate_email": sess.candidate.email,
+            "assessment_id": asm.id,
+            "assessment_title": asm.title,
+            "status": sess.status,
+            "total_score": round(total_score, 2),
+            "max_marks": max_marks,
+            "percentage": pct,
+            "focus_loss_count": sess.focus_loss_count,
+            "started_at": sess.started_at,
+            "finished_at": sess.finished_at,
+            "submitted_count": len(sess.submissions)
+        })
+
+    # Sort leaderboard by percentage descending, then focus loss count ascending
+    leaderboard.sort(key=lambda item: (item["percentage"], -item["focus_loss_count"]), reverse=True)
+
+    # Assign ranks
+    for idx, item in enumerate(leaderboard):
+        item["rank"] = idx + 1
+
+    return leaderboard
 
 @router.get("/sessions/{session_id}", response_model=CandidateSessionDetailOut)
 async def get_candidate_session_detail(
