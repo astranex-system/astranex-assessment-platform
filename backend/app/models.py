@@ -46,6 +46,7 @@ class Candidate(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, nullable=False, index=True)
     full_name = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     tokens = relationship("AssessmentToken", back_populates="candidate", cascade="all, delete-orphan")
@@ -66,6 +67,7 @@ class Assessment(Base):
 
     questions = relationship("Question", back_populates="assessment", cascade="all, delete-orphan", order_by="Question.display_order")
     tokens = relationship("AssessmentToken", back_populates="assessment", cascade="all, delete-orphan")
+    sessions = relationship("AssessmentSession", back_populates="assessment", cascade="all, delete-orphan")
 
 class Question(Base):
     __tablename__ = "questions"
@@ -128,9 +130,9 @@ class AssessmentSession(Base):
     __tablename__ = "assessment_sessions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    token_id = Column(String(36), ForeignKey("assessment_tokens.id"), nullable=False)
-    candidate_id = Column(String(36), ForeignKey("candidates.id"), nullable=False)
-    assessment_id = Column(String(36), ForeignKey("assessments.id"), nullable=False)
+    token_id = Column(String(36), ForeignKey("assessment_tokens.id", ondelete="CASCADE"), nullable=False)
+    candidate_id = Column(String(36), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    assessment_id = Column(String(36), ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
     status = Column(SQLEnum(SessionStatus), default=SessionStatus.IN_PROGRESS, nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime(timezone=True), nullable=False)
@@ -141,6 +143,7 @@ class AssessmentSession(Base):
 
     token = relationship("AssessmentToken", back_populates="sessions")
     candidate = relationship("Candidate", back_populates="sessions")
+    assessment = relationship("Assessment", back_populates="sessions")
     submissions = relationship("Submission", back_populates="session", cascade="all, delete-orphan")
     results = relationship("EvaluationResult", back_populates="session", cascade="all, delete-orphan")
 

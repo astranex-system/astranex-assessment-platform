@@ -259,3 +259,131 @@ async def test_candidate_login_based_access(async_client: AsyncClient):
     assert me_data["candidate_name"] == "Test Applicant"
     assert me_data["candidate_email"] == "applicant.test@astranex.def"
 
+@pytest.mark.asyncio
+async def test_candidate_register_and_login_flow(async_client: AsyncClient):
+    """
+    SECURITY TEST 19:
+    Candidate registration with password, duplicate rejection, and password-protected login.
+    """
+    async with TestingSessionLocal() as db:
+        admin = User(email="recruiter.reg@astranex.def", password_hash=hash_password("admin123"), full_name="Recruiter", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.flush()
+
+        asm = Assessment(title="Aerospace Navigation Exam", created_by=admin.id, duration_minutes=60)
+        db.add(asm)
+        await db.commit()
+        asm_id = asm.id
+
+    # 1. Unregistered candidate tries to login -> 404
+    resp_unreg = await async_client.post(
+        "/api/v1/candidate/login",
+        json={"email": "new.pilot@astranex.def", "password": "mypassword123", "assessment_id": asm_id}
+    )
+    assert resp_unreg.status_code == 404
+    assert "Please click 'Register'" in resp_unreg.json()["detail"]
+
+    # 2. Candidate registers -> 200 OK
+    resp_reg = await async_client.post(
+        "/api/v1/candidate/register",
+        json={
+            "full_name": "New Pilot",
+            "email": "new.pilot@astranex.def",
+            "password": "mypassword123",
+            "assessment_id": asm_id
+        }
+    )
+    assert resp_reg.status_code == 200
+    reg_data = resp_reg.json()
+    assert reg_data["session_id"] is not None
+    assert reg_data["candidate_name"] == "New Pilot"
+
+    # 3. Candidate tries to register again with same email -> 400 Bad Request
+    resp_dup = await async_client.post(
+        "/api/v1/candidate/register",
+        json={
+            "full_name": "New Pilot",
+            "email": "new.pilot@astranex.def",
+            "password": "anotherpassword",
+            "assessment_id": asm_id
+        }
+    )
+    assert resp_dup.status_code == 400
+    assert "already exists" in resp_dup.json()["detail"]
+
+    # 4. Candidate logs in with wrong password -> 401
+    resp_bad_pwd = await async_client.post(
+        "/api/v1/candidate/login",
+        json={"email": "new.pilot@astranex.def", "password": "wrongpassword", "assessment_id": asm_id}
+    )
+    assert resp_bad_pwd.status_code == 401
+    assert "Incorrect password" in resp_bad_pwd.json()["detail"]
+
+    # 5. Candidate logs in with correct password -> 200 OK
+    resp_ok_login = await async_client.post(
+        "/api/v1/candidate/login",
+        json={"email": "new.pilot@astranex.def", "password": "mypassword123", "assessment_id": asm_id}
+    )
+    assert resp_ok_login.status_code == 200
+    assert resp_ok_login.json()["session_id"] == reg_data["session_id"]
+
+@pytest.mark.asyncio
+async def test_admin_safe_delete_cascade(async_client: AsyncClient):
+    """
+    SECURITY TEST 20:
+    Admin can delete assessment that already has candidate sessions and submissions
+    without triggering foreign key constraint errors.
+    """
+    # 1. Admin logs in
+    async with TestingSessionLocal() as db:
+        admin = User(email="admin.del@astranex.def", password_hash=hash_password("admin123"), full_name="Admin Del", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.commit()
+        admin_id = admin.id
+
+    admin_token = create_access_token({"user_id": admin_id, "email": "admin.del@astranex.def", "role": "admin"})
+
+    # 2. Create Assessment
+    resp_create = await async_client.post(
+        "/api/v1/admin/assessments",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"title": "To Be Deleted Exam", "duration_minutes": 30, "result_visibility": "IMMEDIATE"}
+    )
+    assert resp_create.status_code == 200
+    asm_id = resp_create.json()["id"]
+
+    # 3. Add a question
+    resp_q = await async_client.post(
+        f"/api/v1/admin/questions?assessment_id={asm_id}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"question_text": "Sample Q", "question_type": "MCQ", "marks": 2.0, "options": [{"option_text": "A", "display_order": 1, "is_correct": True}]}
+    )
+    assert resp_q.status_code == 200
+    q_id = resp_q.json()["id"]
+
+    # 4. Candidate registers and takes test
+    resp_cand = await async_client.post(
+        "/api/v1/candidate/register",
+        json={"full_name": "Delete Tester", "email": "delete.tester@example.com", "password": "pass", "assessment_id": asm_id}
+    )
+    assert resp_cand.status_code == 200
+    cand_token = resp_cand.json()["access_token"]
+    csrf_token = resp_cand.json()["csrf_token"]
+
+    # 5. Candidate submits answer
+    resp_sub = await async_client.post(
+        "/api/v1/candidate/submit",
+        headers={"Authorization": f"Bearer {cand_token}", "X-CSRF-Token": csrf_token},
+        json={"question_id": q_id, "text_response": "Draft"}
+    )
+    assert resp_sub.status_code == 200
+
+    # 6. Admin deletes assessment -> must succeed with 200 OK!
+    resp_del = await async_client.delete(
+        f"/api/v1/admin/assessments/{asm_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert resp_del.status_code == 200
+    assert "deleted successfully" in resp_del.json()["message"]
+
+

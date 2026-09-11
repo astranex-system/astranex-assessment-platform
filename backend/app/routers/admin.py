@@ -114,13 +114,35 @@ async def delete_assessment(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Deletes an assessment and all associated questions/sessions."""
+    """Deletes an assessment and all associated questions/sessions without foreign key errors."""
     stmt = select(Assessment).where(Assessment.id == assessment_id)
     res = await db.execute(stmt)
     asm = res.scalar_one_or_none()
     if not asm:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
 
+    # 1. Clean up child assessment sessions and submissions
+    sess_stmt = select(AssessmentSession.id).where(AssessmentSession.assessment_id == assessment_id)
+    sess_res = await db.execute(sess_stmt)
+    sess_ids = sess_res.scalars().all()
+    if sess_ids:
+        await db.execute(delete(EvaluationResult).where(EvaluationResult.session_id.in_(sess_ids)))
+        await db.execute(delete(Submission).where(Submission.session_id.in_(sess_ids)))
+        await db.execute(delete(AssessmentSession).where(AssessmentSession.id.in_(sess_ids)))
+
+    # 2. Clean up tokens
+    await db.execute(delete(AssessmentToken).where(AssessmentToken.assessment_id == assessment_id))
+
+    # 3. Clean up questions, options, and answer keys
+    q_stmt = select(Question.id).where(Question.assessment_id == assessment_id)
+    q_res = await db.execute(q_stmt)
+    q_ids = q_res.scalars().all()
+    if q_ids:
+        await db.execute(delete(QuestionAnswer).where(QuestionAnswer.question_id.in_(q_ids)))
+        await db.execute(delete(QuestionOption).where(QuestionOption.question_id.in_(q_ids)))
+        await db.execute(delete(Question).where(Question.id.in_(q_ids)))
+
+    # 4. Safely delete assessment
     await db.delete(asm)
     await db.commit()
 
@@ -222,18 +244,52 @@ async def delete_question(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Deletes a single question and its associated options and answer key."""
+    """Deletes a single question and cleans up associated options, answers, and submissions."""
     stmt = select(Question).where(Question.id == question_id)
     res = await db.execute(stmt)
     q = res.scalar_one_or_none()
     if not q:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found.")
 
+    # 1. Delete submissions referencing this question
+    sub_stmt = select(Submission.id).where(Submission.question_id == question_id)
+    sub_res = await db.execute(sub_stmt)
+    sub_ids = sub_res.scalars().all()
+    if sub_ids:
+        await db.execute(delete(EvaluationResult).where(EvaluationResult.submission_id.in_(sub_ids)))
+        await db.execute(delete(Submission).where(Submission.id.in_(sub_ids)))
+
+    # 2. Delete answer key and options
+    await db.execute(delete(QuestionAnswer).where(QuestionAnswer.question_id == question_id))
+    await db.execute(delete(QuestionOption).where(QuestionOption.question_id == question_id))
+
+    # 3. Delete question
     await db.delete(q)
     await db.commit()
 
     await log_audit_event(db, "DELETE_QUESTION", f"question:{question_id}", actor_id=admin.id, actor_role=admin.role.value)
     return {"message": "Question deleted successfully."}
+
+@router.delete("/sessions/{session_id}")
+async def delete_candidate_session(
+    session_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Deletes a candidate session to clear test attempts or test submissions."""
+    stmt = select(AssessmentSession).where(AssessmentSession.id == session_id)
+    res = await db.execute(stmt)
+    sess = res.scalar_one_or_none()
+    if not sess:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+
+    await db.execute(delete(EvaluationResult).where(EvaluationResult.session_id == session_id))
+    await db.execute(delete(Submission).where(Submission.session_id == session_id))
+    await db.delete(sess)
+    await db.commit()
+
+    await log_audit_event(db, "DELETE_SESSION", f"session:{session_id}", actor_id=admin.id, actor_role=admin.role.value)
+    return {"message": "Candidate session removed successfully."}
 
 @router.post("/questions/upload-csv")
 async def upload_questions_csv(

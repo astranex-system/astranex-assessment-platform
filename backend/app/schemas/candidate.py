@@ -7,9 +7,16 @@ from app.models import QuestionType, SessionStatus, ResultVisibility
 class StartSessionRequest(BaseModel):
     token: str = Field(..., description="Unique single-use assessment invitation token")
 
+class CandidateRegisterRequest(BaseModel):
+    full_name: str = Field(..., min_length=2, description="Candidate full name")
+    email: str = Field(..., description="Candidate email address")
+    password: str = Field(..., min_length=4, description="Candidate password")
+    assessment_id: Optional[str] = Field(None, description="Assessment ID (optional, defaults to active assessment)")
+
 class CandidateLoginRequest(BaseModel):
     email: str = Field(..., description="Candidate email address")
-    full_name: str = Field(..., description="Candidate full name")
+    password: Optional[str] = Field(None, description="Candidate password")
+    full_name: Optional[str] = Field(None, description="Candidate full name (fallback if creating on the fly)")
     assessment_id: Optional[str] = Field(None, description="Assessment ID (optional, defaults to active assessment)")
 
 class PublicAssessmentOut(BaseModel):

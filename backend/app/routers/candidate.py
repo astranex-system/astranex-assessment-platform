@@ -9,10 +9,10 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import (
     AssessmentToken, AssessmentSession, Assessment, Candidate, Question, QuestionOption,
-    Submission, SessionStatus, ResultVisibility, AuditLog
+    Submission, SessionStatus, ResultVisibility, AuditLog, QuestionType
 )
 from app.schemas.candidate import (
-    StartSessionRequest, CandidateLoginRequest, PublicAssessmentOut, SubmissionRequest,
+    StartSessionRequest, CandidateRegisterRequest, CandidateLoginRequest, PublicAssessmentOut, SubmissionRequest,
     CandidateSessionMeOut, CandidateQuestionOut, CandidateSubmissionResultOut,
     CandidateFinalResultOut, CandidateAssessmentOut, CandidateQuestionOptionOut,
     CandidateSubmissionStateOut, FocusLossTelemetryRequest
@@ -20,7 +20,7 @@ from app.schemas.candidate import (
 from app.dependencies import get_current_candidate_session
 from app.security import (
     hash_token, create_access_token, generate_csrf_token, verify_csrf_token,
-    SESSION_COOKIE_NAME, CSRF_COOKIE_NAME
+    hash_password, verify_password, SESSION_COOKIE_NAME, CSRF_COOKIE_NAME
 )
 from app.services.scoring import score_submission
 from app.services.audit import log_audit_event
@@ -67,17 +67,16 @@ async def list_available_assessments(db: AsyncSession = Depends(get_db)):
         )
     return out
 
-@router.post("/login")
-async def candidate_login_start(
-    payload: CandidateLoginRequest,
+@router.post("/register")
+async def candidate_register(
+    payload: CandidateRegisterRequest,
     request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Seamless Login-Based Candidate Entry:
-    Recruiter shares the portal link. Candidate logs in with Name, Email, and selects the exam.
-    Server verifies or creates candidate profile and manages active session.
+    Candidate Account Registration:
+    Registers a candidate with Full Name, Email, and Password, then initializes their examination session.
     """
     import secrets
     email_clean = payload.email.strip().lower()
@@ -87,12 +86,39 @@ async def candidate_login_start(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please enter a valid email address.")
     if not name_clean:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please enter your full name.")
+    if not payload.password or len(payload.password) < 4:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 4 characters long.")
+
+    # Check if candidate already exists
+    cand_stmt = select(Candidate).where(Candidate.email == email_clean)
+    cand_res = await db.execute(cand_stmt)
+    candidate = cand_res.scalar_one_or_none()
+
+    if candidate:
+        if candidate.password_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email already exists. Please switch to the Login tab to sign in."
+            )
+        else:
+            candidate.password_hash = hash_password(payload.password)
+            candidate.full_name = name_clean
+            await db.commit()
+    else:
+        candidate = Candidate(
+            email=email_clean,
+            full_name=name_clean,
+            password_hash=hash_password(payload.password)
+        )
+        db.add(candidate)
+        await db.commit()
+        await db.refresh(candidate)
 
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("User-Agent", "unknown")
     now = datetime.now(timezone.utc)
 
-    # 1. Resolve Target Assessment
+    # Resolve Assessment
     if payload.assessment_id:
         asm_stmt = select(Assessment).where(Assessment.id == payload.assessment_id)
         asm_res = await db.execute(asm_stmt)
@@ -100,35 +126,155 @@ async def candidate_login_start(
         if not assessment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specified assessment not found.")
     else:
-        # Auto-select latest active assessment
         asm_stmt = select(Assessment).order_by(Assessment.created_at.desc()).limit(1)
         asm_res = await db.execute(asm_stmt)
         assessment = asm_res.scalar_one_or_none()
         if not assessment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active assessments found. Please contact the administrator.")
 
-    # Validate assessment window
+    # Create assessment session
+    dummy_tok = secrets.token_urlsafe(32)
+    token_obj = AssessmentToken(
+        candidate_id=candidate.id,
+        assessment_id=assessment.id,
+        token_hash=hash_token(dummy_tok),
+        expires_at=now + timedelta(days=30),
+        max_attempts=1,
+        used_count=1
+    )
+    db.add(token_obj)
+    await db.flush()
+
+    expires_at = now + timedelta(minutes=assessment.duration_minutes)
+    session = AssessmentSession(
+        token_id=token_obj.id,
+        candidate_id=candidate.id,
+        assessment_id=assessment.id,
+        status=SessionStatus.IN_PROGRESS,
+        started_at=now,
+        expires_at=expires_at,
+        client_ip=client_ip,
+        user_agent=user_agent
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    await log_audit_event(
+        db, "CANDIDATE_REGISTER", f"session:{session.id}",
+        actor_id=candidate.id, actor_role="candidate", ip_address=client_ip
+    )
+
+    # JWT + Cookies
+    jwt_data = {
+        "session_id": session.id,
+        "candidate_id": candidate.id,
+        "assessment_id": assessment.id,
+        "role": "candidate"
+    }
+    jwt_token = create_access_token(jwt_data, expires_delta=timedelta(minutes=assessment.duration_minutes + 60))
+    csrf_token = generate_csrf_token()
+
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=jwt_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=assessment.duration_minutes * 60 + 3600
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,
+        samesite="lax",
+        secure=False,
+        max_age=assessment.duration_minutes * 60 + 3600
+    )
+
+    return {
+        "session_id": session.id,
+        "access_token": jwt_token,
+        "csrf_token": csrf_token,
+        "expires_at": session.expires_at,
+        "status": session.status,
+        "candidate_name": candidate.full_name,
+        "candidate_email": candidate.email,
+        "assessment_title": assessment.title,
+        "duration_minutes": assessment.duration_minutes,
+        "message": "Candidate account created and examination session started."
+    }
+
+@router.post("/login")
+async def candidate_login_start(
+    payload: CandidateLoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Candidate Account Login:
+    Authenticates existing candidate with Email and Password.
+    If no account exists, instructs them to register.
+    """
+    import secrets
+    email_clean = payload.email.strip().lower()
+    if not email_clean or "@" not in email_clean:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please enter a valid email address.")
+
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("User-Agent", "unknown")
+    now = datetime.now(timezone.utc)
+
+    # 1. Lookup candidate
+    cand_stmt = select(Candidate).where(Candidate.email == email_clean)
+    cand_res = await db.execute(cand_stmt)
+    candidate = cand_res.scalar_one_or_none()
+
+    if not candidate:
+        # If full_name is provided (fallback entry), allow auto-register
+        if payload.full_name and payload.full_name.strip():
+            candidate = Candidate(
+                email=email_clean,
+                full_name=payload.full_name.strip(),
+                password_hash=hash_password(payload.password) if payload.password else None
+            )
+            db.add(candidate)
+            await db.commit()
+            await db.refresh(candidate)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account found with this email. Please click 'Register' to create your candidate account first."
+            )
+    else:
+        # Verify password if account has password set
+        if candidate.password_hash:
+            if not payload.password:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Password is required for this account.")
+            if not verify_password(payload.password, candidate.password_hash):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password. Please verify and try again.")
+
+    # 2. Resolve Target Assessment
+    if payload.assessment_id:
+        asm_stmt = select(Assessment).where(Assessment.id == payload.assessment_id)
+        asm_res = await db.execute(asm_stmt)
+        assessment = asm_res.scalar_one_or_none()
+        if not assessment:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specified assessment not found.")
+    else:
+        asm_stmt = select(Assessment).order_by(Assessment.created_at.desc()).limit(1)
+        asm_res = await db.execute(asm_stmt)
+        assessment = asm_res.scalar_one_or_none()
+        if not assessment:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active assessments found. Please contact the administrator.")
+
+    # Validate window
     start_win = ensure_tz_aware(assessment.start_window)
     end_win = ensure_tz_aware(assessment.end_window)
     if start_win and now < start_win:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Assessment window has not opened yet.")
     if end_win and now > end_win:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Assessment window has closed.")
-
-    # 2. Find or Create Candidate
-    cand_stmt = select(Candidate).where(Candidate.email == email_clean)
-    cand_res = await db.execute(cand_stmt)
-    candidate = cand_res.scalar_one_or_none()
-
-    if not candidate:
-        candidate = Candidate(email=email_clean, full_name=name_clean)
-        db.add(candidate)
-        await db.commit()
-        await db.refresh(candidate)
-    else:
-        if name_clean and candidate.full_name != name_clean:
-            candidate.full_name = name_clean
-            await db.commit()
 
     # 3. Check for existing session
     sess_stmt = (
@@ -158,7 +304,6 @@ async def candidate_login_start(
             )
         # Re-attach and resume active session!
     else:
-        # Ensure an AssessmentToken exists for referential audit
         dummy_tok = secrets.token_urlsafe(32)
         token_obj = AssessmentToken(
             candidate_id=candidate.id,
@@ -200,7 +345,6 @@ async def candidate_login_start(
     jwt_token = create_access_token(jwt_data, expires_delta=timedelta(minutes=assessment.duration_minutes + 60))
     csrf_token = generate_csrf_token()
 
-    # Set cookies
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=jwt_token,

@@ -206,19 +206,42 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteAssessment = async (asmId: string) => {
-    if (!confirm("Are you sure you want to delete this assessment and all questions/sessions?")) return;
+    if (!confirm("Are you sure you want to permanently delete this exam and all associated questions and candidate sessions?")) return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/assessments/${asmId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${adminToken}` }
       });
       if (res.ok) {
-        alert("Assessment deleted.");
+        alert("Assessment and all sessions deleted successfully.");
         fetchAssessments();
         if (selectedAsmId === asmId) setSelectedAsmId(null);
+      } else {
+        const data = await res.json();
+        alert("Failed to delete assessment: " + (data.detail || "Server error"));
       }
     } catch (err: any) {
       alert("Error deleting assessment: " + err.message);
+    }
+  };
+
+  const handleDeleteSession = async (sessId: string) => {
+    if (!confirm("Are you sure you want to delete this candidate's test session and submissions?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/sessions/${sessId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+      if (res.ok) {
+        alert("Candidate attempt session removed.");
+        fetchLeaderboard();
+        fetchAssessments();
+      } else {
+        const data = await res.json();
+        alert("Failed to delete session: " + (data.detail || "Server error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
     }
   };
 
@@ -253,6 +276,9 @@ export default function AdminDashboard() {
         alert("Question with secret server-side answer key added!");
         setQText("");
         fetchQuestionsForAsm(selectedAsmId);
+      } else {
+        const data = await res.json();
+        alert("Failed to add question: " + (data.detail || "Error"));
       }
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -269,6 +295,9 @@ export default function AdminDashboard() {
       if (res.ok) {
         alert("Question deleted.");
         if (selectedAsmId) fetchQuestionsForAsm(selectedAsmId);
+      } else {
+        const data = await res.json();
+        alert("Failed to delete question: " + (data.detail || "Error"));
       }
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -524,10 +553,25 @@ export default function AdminDashboard() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
                         <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff" }}>{asm.title}</span>
                         <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); handleDeleteAssessment(asm.id); }}
-                          style={{ background: "none", border: "none", color: "var(--accent-red)", cursor: "pointer" }}
+                          title="Delete Assessment"
+                          style={{
+                            padding: "0.3rem 0.6rem",
+                            backgroundColor: "rgba(239, 68, 68, 0.15)",
+                            border: "1px solid var(--accent-red)",
+                            borderRadius: "4px",
+                            color: "var(--accent-red)",
+                            cursor: "pointer",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.3rem"
+                          }}
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={13} />
+                          <span>Delete</span>
                         </button>
                       </div>
                       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
@@ -546,8 +590,28 @@ export default function AdminDashboard() {
             {/* Question Bank for Selected Assessment */}
             {selectedAsmId && (
               <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1.25rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
                   <h4 style={{ fontSize: "1rem", fontWeight: 600 }}>Question Bank for Selected Exam ({asmQuestions.length} Questions)</h4>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAssessment(selectedAsmId)}
+                    style={{
+                      padding: "0.4rem 0.8rem",
+                      backgroundColor: "rgba(239, 68, 68, 0.15)",
+                      border: "1px solid var(--accent-red)",
+                      borderRadius: "4px",
+                      color: "var(--accent-red)",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.4rem"
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete This Entire Exam</span>
+                  </button>
                 </div>
 
                 {/* Questions List */}
@@ -576,10 +640,24 @@ export default function AdminDashboard() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleDeleteQuestion(q.id)}
-                        style={{ padding: "0.4rem 0.6rem", backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid var(--accent-red)", borderRadius: "4px", color: "var(--accent-red)", cursor: "pointer" }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.25rem",
+                          padding: "0.4rem 0.7rem",
+                          backgroundColor: "rgba(239,68,68,0.15)",
+                          border: "1px solid var(--accent-red)",
+                          borderRadius: "4px",
+                          color: "var(--accent-red)",
+                          cursor: "pointer",
+                          fontSize: "0.75rem",
+                          fontWeight: 600
+                        }}
                       >
-                        Delete
+                        <Trash2 size={13} />
+                        <span>Delete</span>
                       </button>
                     </div>
                   ))}
@@ -716,23 +794,44 @@ export default function AdminDashboard() {
                       </span>
                     </td>
                     <td style={{ padding: "0.75rem" }}>
-                      <button
-                        onClick={() => fetchSessionDetail(item.session_id)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.3rem",
-                          padding: "0.35rem 0.75rem",
-                          backgroundColor: "var(--accent-blue)",
-                          border: "none",
-                          borderRadius: "4px",
-                          color: "#fff",
-                          fontSize: "0.8rem",
-                          cursor: "pointer"
-                        }}
-                      >
-                        <Eye size={14} /> Inspect Code
-                      </button>
+                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <button
+                          onClick={() => fetchSessionDetail(item.session_id)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            padding: "0.35rem 0.65rem",
+                            backgroundColor: "var(--accent-blue)",
+                            border: "none",
+                            borderRadius: "4px",
+                            color: "#fff",
+                            fontSize: "0.8rem",
+                            cursor: "pointer"
+                          }}
+                        >
+                          <Eye size={14} /> Inspect
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSession(item.session_id)}
+                          title="Delete candidate attempt"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            padding: "0.35rem 0.6rem",
+                            backgroundColor: "rgba(239, 68, 68, 0.15)",
+                            border: "1px solid var(--accent-red)",
+                            borderRadius: "4px",
+                            color: "var(--accent-red)",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          <Trash2 size={13} /> Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
