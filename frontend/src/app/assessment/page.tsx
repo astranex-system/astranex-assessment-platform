@@ -275,7 +275,7 @@ export default function AssessmentWorkspace() {
   }
 
   const currentQ = questions[activeQIndex];
-  const currentSub = currentQ ? (submissions[currentQ.id] || {}) : {};
+  const currentSub: Partial<SubmissionState> = currentQ ? (submissions[currentQ.id] || {}) : {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
