@@ -1,0 +1,26 @@
+# Virtual environments
+venv*/
+env/
+.venv/
+
+# Node dependencies & Next.js build
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+
+# Python cache & test files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# Database & Environment secrets
+*.db
+*.sqlite
+.env
+.env.local
+
+# Logs
+*.log
