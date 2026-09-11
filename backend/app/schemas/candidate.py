@@ -53,6 +53,7 @@ class CandidateAssessmentCardOut(BaseModel):
     attempts_remaining: int = 1
     status: str = "NOT_STARTED"  # NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED
     question_count: int = 0
+    rules: Optional[str] = None
 
 class CandidateQuestionOptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -84,6 +85,7 @@ class CandidateAssessmentOut(BaseModel):
     description: Optional[str] = None
     duration_minutes: int
     result_visibility: ResultVisibility
+    rules: Optional[str] = None
 
 class CandidateSubmissionStateOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

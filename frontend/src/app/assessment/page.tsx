@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio } from "lucide-react";
+import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
@@ -43,6 +43,7 @@ export default function AssessmentWorkspace() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isFinished, setIsFinished] = useState(false);
   const [finalResult, setFinalResult] = useState<any>(null);
+  const [showRulesModal, setShowRulesModal] = useState(false);
 
   // Load session & questions
   useEffect(() => {
@@ -330,7 +331,29 @@ export default function AssessmentWorkspace() {
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <button
+            type="button"
+            onClick={() => setShowRulesModal(true)}
+            title="Review Examination Rules & Integrity Protocols"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              padding: "0.4rem 0.8rem",
+              backgroundColor: "rgba(56, 189, 248, 0.12)",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
+              borderRadius: "6px",
+              color: "#38bdf8",
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            <ShieldAlert size={15} />
+            <span>Exam Rules</span>
+          </button>
+
           <div style={{
             display: "flex",
             alignItems: "center",
@@ -596,6 +619,136 @@ export default function AssessmentWorkspace() {
           )}
         </main>
       </div>
+
+      {/* ================================================== */}
+      {/* MODAL: ACTIVE EXAMINATION RULES & PROTOCOLS        */}
+      {/* ================================================== */}
+      {showRulesModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.85)",
+          backdropFilter: "blur(6px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "1rem"
+        }}>
+          <div style={{
+            width: "100%",
+            maxWidth: "640px",
+            backgroundColor: "#0d1424",
+            border: "1px solid #1e293b",
+            borderRadius: "12px",
+            padding: "2rem",
+            maxHeight: "85vh",
+            overflowY: "auto",
+            boxShadow: "0 25px 50px rgba(0, 0, 0, 0.85)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem", borderBottom: "1px solid #1e293b", paddingBottom: "1rem" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem" }}>
+                  <ShieldAlert size={20} color="#38bdf8" />
+                  <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#38bdf8" }}>
+                    AstraNex Examination Rules
+                  </span>
+                </div>
+                <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
+                  {session?.assessment?.title || "Active Examination"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRulesModal(false)}
+                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "0.25rem" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Custom Rules */}
+            {(session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules"))) && (
+              <div style={{
+                backgroundColor: "rgba(56, 189, 248, 0.08)",
+                border: "1px solid rgba(56, 189, 248, 0.25)",
+                borderRadius: "8px",
+                padding: "1rem",
+                marginBottom: "1.25rem"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem", color: "#38bdf8", fontWeight: 700, fontSize: "0.85rem" }}>
+                  <BookOpen size={16} />
+                  <span>Specific Assessment Rules</span>
+                </div>
+                <div style={{
+                  fontSize: "0.85rem",
+                  color: "#e2e8f0",
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                  fontFamily: "inherit"
+                }}>
+                  {session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules"))}
+                </div>
+              </div>
+            )}
+
+            {/* Platform Rules */}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <h4 style={{ fontSize: "0.82rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#94a3b8", margin: "0 0 0.75rem 0" }}>
+                Mandatory Security & Integrity Protocols
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem", fontSize: "0.82rem" }}>
+                <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
+                  <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.25rem" }}>1.</div>
+                  <div style={{ color: "#cbd5e1" }}>
+                    <strong style={{ color: "#ffffff" }}>Proctored Window Focus:</strong> Leaving the active browser window or switching applications logs security infractions directly into the proctoring audit log.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
+                  <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.25rem" }}>2.</div>
+                  <div style={{ color: "#cbd5e1" }}>
+                    <strong style={{ color: "#ffffff" }}>Server-Synchronized Timer:</strong> The countdown clock is authoritative on the backend. Time continues to elapse even if the browser is closed.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
+                  <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.25rem" }}>3.</div>
+                  <div style={{ color: "#cbd5e1" }}>
+                    <strong style={{ color: "#ffffff" }}>Zero-Trust Isolated Code Sandbox:</strong> Code submissions are compiled in an isolated sandbox with zero external network connectivity.
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
+                  <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.25rem" }}>4.</div>
+                  <div style={{ color: "#cbd5e1" }}>
+                    <strong style={{ color: "#ffffff" }}>Anti-Plagiarism:</strong> External copy-pasting, unauthorized AI assistants, and developer tool tampering are prohibited.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowRulesModal(false)}
+                style={{
+                  padding: "0.6rem 1.5rem",
+                  backgroundColor: "var(--accent-blue)",
+                  border: "none",
+                  borderRadius: "6px",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                  cursor: "pointer"
+                }}
+              >
+                Return to Examination
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

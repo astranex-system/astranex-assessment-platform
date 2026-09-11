@@ -72,6 +72,7 @@ class Assessment(Base):
     start_window = Column(DateTime(timezone=True), nullable=True)
     end_window = Column(DateTime(timezone=True), nullable=True)
     result_visibility = Column(SQLEnum(ResultVisibility), default=ResultVisibility.NEVER)
+    rules = Column(Text, nullable=True)
     created_by = Column(String(36), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

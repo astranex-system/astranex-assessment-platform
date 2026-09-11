@@ -70,6 +70,7 @@ export default function AdminPortal() {
   const [asmPassingMarks, setAsmPassingMarks] = useState(60);
   const [asmMaxAttempts, setAsmMaxAttempts] = useState(1);
   const [asmResultVisibility, setAsmResultVisibility] = useState("NEVER");
+  const [asmRules, setAsmRules] = useState("");
   const [isSavingAssessment, setIsSavingAssessment] = useState(false);
 
   // --- Question Bank & CSV Workflow State ---
@@ -276,6 +277,49 @@ export default function AdminPortal() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleDeleteCandidate = async (candidateId: string, candidateName: string) => {
+    if (!confirm(`CRITICAL WARNING: Permanently delete candidate "${candidateName}" and all associated examination sessions, submissions, evaluation results, and integrity logs? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/candidates/${candidateId}`, {
+        method: "DELETE",
+        headers: authHeaders
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `Candidate ${candidateName} deleted successfully.`);
+        if (selectedCandidateDetail?.id === candidateId) {
+          setSelectedCandidateDetail(null);
+        }
+        loadCandidates();
+        loadDashboardMetrics();
+      } else {
+        showToast(data.detail || "Failed to delete candidate.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Error deleting candidate.", "error");
+    }
+  };
+
+  const handlePurgeDemoCandidates = async () => {
+    if (!confirm("CRITICAL WARNING: Purge all demo, test, and example candidate accounts and their test sessions? Only real candidate accounts will be preserved.")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/candidates/purge-demo`, {
+        method: "POST",
+        headers: authHeaders
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Demo candidates purged successfully.");
+        loadCandidates();
+        loadDashboardMetrics();
+      } else {
+        showToast(data.detail || "Failed to purge demo candidates.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Error purging demo candidates.", "error");
     }
   };
 
@@ -570,7 +614,8 @@ export default function AdminPortal() {
         total_marks: asmTotalMarks,
         passing_marks: asmPassingMarks,
         max_attempts: asmMaxAttempts,
-        result_visibility: asmResultVisibility
+        result_visibility: asmResultVisibility,
+        rules: asmRules.trim() || null
       };
 
       let res;
@@ -1055,6 +1100,7 @@ export default function AdminPortal() {
                 setAsmTitle("");
                 setAsmRole("Software Engineering");
                 setAsmDesc("");
+                setAsmRules("");
                 setAsmDuration(60);
                 setAsmTotalMarks(100);
                 setAsmPassingMarks(60);
@@ -1369,6 +1415,27 @@ export default function AdminPortal() {
                 </div>
                 <div style={{ display: "flex", gap: "0.75rem" }}>
                   <button
+                    onClick={handlePurgeDemoCandidates}
+                    title="Purge all demo/test candidate accounts and their session records"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.6rem 1rem",
+                      backgroundColor: "rgba(239, 68, 68, 0.12)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      borderRadius: "6px",
+                      color: "#ef4444",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Purge Demo Accounts</span>
+                  </button>
+
+                  <button
                     onClick={() => {
                       setAssignCandidateIds([]);
                       setBulkCsvEmails("");
@@ -1618,6 +1685,27 @@ export default function AdminPortal() {
                                   Activate
                                 </button>
                               )}
+
+                              <button
+                                onClick={() => handleDeleteCandidate(cand.id, cand.full_name || cand.email)}
+                                title="Permanently Delete Candidate"
+                                style={{
+                                  padding: "0.35rem 0.6rem",
+                                  backgroundColor: "rgba(239, 68, 68, 0.12)",
+                                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                                  color: "#ef4444",
+                                  borderRadius: "4px",
+                                  cursor: "pointer",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem"
+                                }}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1649,6 +1737,7 @@ export default function AdminPortal() {
                     setAsmTitle("");
                     setAsmRole("Software Engineering");
                     setAsmDesc("");
+                    setAsmRules("");
                     setAsmDuration(60);
                     setAsmTotalMarks(100);
                     setAsmPassingMarks(60);
@@ -1794,6 +1883,7 @@ export default function AdminPortal() {
                             setAsmTitle(asm.title);
                             setAsmRole(asm.role || "Software Engineering");
                             setAsmDesc(asm.description || "");
+                            setAsmRules(asm.rules || "");
                             setAsmDuration(asm.duration_minutes);
                             setAsmTotalMarks(asm.total_marks);
                             setAsmPassingMarks(asm.passing_marks);
@@ -3474,15 +3564,36 @@ export default function AdminPortal() {
                 </div>
               </div>
 
-              <div style={{ marginBottom: "1.5rem" }}>
+              <div style={{ marginBottom: "1rem" }}>
                 <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#8b9bb4", marginBottom: "0.4rem" }}>
-                  Description / Guidelines
+                  Description / Overview
                 </label>
                 <textarea
-                  rows={3}
-                  placeholder="Instructions displayed to candidates prior to launching the exam..."
+                  rows={2}
+                  placeholder="Overview of the technical assessment domain and objectives..."
                   value={asmDesc}
                   onChange={(e) => setAsmDesc(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    backgroundColor: "#060911",
+                    border: "1px solid #1b2844",
+                    borderRadius: "6px",
+                    color: "#ffffff",
+                    fontSize: "0.85rem"
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#8b9bb4", marginBottom: "0.4rem" }}>
+                  Assessment Rules & Guidelines
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Specific examination rules and guidelines (e.g., Permitted reference docs, strictly no external IDEs, single attempt policy, code compilation expectations)..."
+                  value={asmRules}
+                  onChange={(e) => setAsmRules(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "0.75rem",

@@ -59,6 +59,7 @@ class AssessmentCreate(BaseModel):
     passing_marks: float = 60.0
     max_attempts: int = 1
     status: str = "ACTIVE"
+    rules: Optional[str] = None
     start_window: Optional[datetime] = None
     end_window: Optional[datetime] = None
     result_visibility: ResultVisibility = ResultVisibility.NEVER
@@ -72,6 +73,7 @@ class AssessmentUpdate(BaseModel):
     passing_marks: Optional[float] = None
     max_attempts: Optional[int] = None
     status: Optional[str] = None
+    rules: Optional[str] = None
     start_window: Optional[datetime] = None
     end_window: Optional[datetime] = None
     result_visibility: Optional[ResultVisibility] = None

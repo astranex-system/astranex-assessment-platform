@@ -223,6 +223,7 @@ async def list_assessments(
             "question_count": len(asm.questions),
             "session_count": session_count,
             "candidate_count": max(assigned_count, session_count),
+            "rules": asm.rules,
             "created_at": asm.created_at
         })
     return out
@@ -243,6 +244,7 @@ async def create_assessment(
         passing_marks=payload.passing_marks,
         max_attempts=payload.max_attempts,
         status=payload.status or "ACTIVE",
+        rules=payload.rules,
         start_window=payload.start_window,
         end_window=payload.end_window,
         result_visibility=payload.result_visibility,
@@ -759,6 +761,101 @@ async def update_candidate_status(
         metadata={"new_status": new_status}
     )
     return {"message": f"Candidate status updated to {new_status}."}
+
+@router.delete("/candidates/{candidate_id}")
+async def delete_candidate(
+    candidate_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Permanently deletes a candidate account and safely cascades all sessions, submissions,
+    evaluations, tokens, assignments, and integrity events.
+    """
+    stmt = select(Candidate).where(Candidate.id == candidate_id)
+    res = await db.execute(stmt)
+    cand = res.scalar_one_or_none()
+    if not cand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found.")
+
+    cand_email = cand.email
+
+    # 1. Cascade delete all sessions and their dependencies
+    sess_stmt = select(AssessmentSession).where(AssessmentSession.candidate_id == candidate_id)
+    sess_res = await db.execute(sess_stmt)
+    sessions = sess_res.scalars().all()
+    for s in sessions:
+        await db.execute(delete(EvaluationResult).where(EvaluationResult.session_id == s.id))
+        await db.execute(delete(Submission).where(Submission.session_id == s.id))
+        await db.execute(delete(AssessmentSession).where(AssessmentSession.id == s.id))
+
+    # 2. Delete tokens, assignments, integrity events
+    await db.execute(delete(AssessmentToken).where(AssessmentToken.candidate_id == candidate_id))
+    await db.execute(delete(CandidateAssessmentAssignment).where(CandidateAssessmentAssignment.candidate_id == candidate_id))
+    await db.execute(delete(IntegrityEvent).where(IntegrityEvent.candidate_id == candidate_id))
+
+    # 3. Delete candidate record
+    await db.delete(cand)
+    await db.commit()
+
+    await log_audit_event(
+        db,
+        "DELETE_CANDIDATE",
+        f"candidate:{candidate_id}",
+        actor_id=admin.id,
+        actor_role=admin.role.value,
+        metadata={"deleted_email": cand_email}
+    )
+    return {"message": f"Candidate '{cand_email}' and all associated exam records have been permanently deleted."}
+
+@router.post("/candidates/purge-demo")
+async def purge_demo_candidates(
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Purges all test, demo, and sample candidate accounts from the database.
+    Matches emails containing test, example, demo, or placeholder names.
+    """
+    stmt = select(Candidate).where(
+        or_(
+            Candidate.email.ilike("%test%"),
+            Candidate.email.ilike("%example%"),
+            Candidate.email.ilike("%demo%"),
+            Candidate.full_name.ilike("%test%"),
+            Candidate.full_name.ilike("%demo%")
+        )
+    )
+    res = await db.execute(stmt)
+    demo_candidates = res.scalars().all()
+    purged_count = 0
+
+    for cand in demo_candidates:
+        sess_stmt = select(AssessmentSession).where(AssessmentSession.candidate_id == cand.id)
+        sess_res = await db.execute(sess_stmt)
+        sessions = sess_res.scalars().all()
+        for s in sessions:
+            await db.execute(delete(EvaluationResult).where(EvaluationResult.session_id == s.id))
+            await db.execute(delete(Submission).where(Submission.session_id == s.id))
+            await db.execute(delete(AssessmentSession).where(AssessmentSession.id == s.id))
+
+        await db.execute(delete(AssessmentToken).where(AssessmentToken.candidate_id == cand.id))
+        await db.execute(delete(CandidateAssessmentAssignment).where(CandidateAssessmentAssignment.candidate_id == cand.id))
+        await db.execute(delete(IntegrityEvent).where(IntegrityEvent.candidate_id == cand.id))
+        await db.delete(cand)
+        purged_count += 1
+
+    await db.commit()
+
+    await log_audit_event(
+        db,
+        "PURGE_DEMO_CANDIDATES",
+        "candidates",
+        actor_id=admin.id,
+        actor_role=admin.role.value,
+        metadata={"purged_count": purged_count}
+    )
+    return {"message": f"Successfully purged {purged_count} demo/test candidate account(s).", "purged_count": purged_count}
 
 @router.post("/assessments/{assessment_id}/assign")
 async def assign_candidates_to_assessment(

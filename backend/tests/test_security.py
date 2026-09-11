@@ -479,5 +479,60 @@ Q103,Algorithms,CODING,Implement Binary Search,,,,,,10.0,Hard,search,"[{""input"
     assert val_data["invalid_count"] == 1
     assert any("does not match any of the provided options" in err["error"] for err in val_data["errors"])
 
+@pytest.mark.asyncio
+async def test_delete_candidate_and_purge_demo(async_client: AsyncClient):
+    """
+    DATA HYGIENE & GDPR TEST:
+    Verifies candidate deletion safely cascades, and demo candidates purge operates cleanly.
+    """
+    async with TestingSessionLocal() as db:
+        admin = User(email="admin.purge@astranex.def", password_hash=hash_password("admin123"), full_name="Admin Purge", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.commit()
+        admin_id = admin.id
+
+    admin_token = create_access_token({"user_id": admin_id, "email": "admin.purge@astranex.def", "role": "admin"})
+
+    # 1. Create a demo candidate and a real candidate
+    async with TestingSessionLocal() as db:
+        demo_cand = Candidate(email="demo_sample_user@test.com", full_name="Demo Sample Candidate")
+        real_cand = Candidate(email="real_engineer@defence.in", full_name="Real Defence Engineer")
+        db.add_all([demo_cand, real_cand])
+        await db.commit()
+        await db.refresh(demo_cand)
+        await db.refresh(real_cand)
+        demo_id = demo_cand.id
+        real_id = real_cand.id
+
+    # 2. Test individual candidate deletion on real_cand
+    del_resp = await async_client.delete(
+        f"/api/v1/admin/candidates/{real_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert del_resp.status_code == 200
+    assert "permanently deleted" in del_resp.json()["message"]
+
+    # Verify real_cand is gone
+    check_resp = await async_client.get(
+        "/api/v1/admin/candidates",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert not any(c["id"] == real_id for c in check_resp.json())
+
+    # 3. Test purge demo candidates
+    purge_resp = await async_client.post(
+        "/api/v1/admin/candidates/purge-demo",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert purge_resp.status_code == 200
+    assert purge_resp.json()["purged_count"] >= 1
+
+    # Verify demo_cand is gone
+    check_resp2 = await async_client.get(
+        "/api/v1/admin/candidates",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert not any(c["id"] == demo_id for c in check_resp2.json())
+
 
 

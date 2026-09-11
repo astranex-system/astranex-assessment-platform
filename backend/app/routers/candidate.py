@@ -150,7 +150,8 @@ async def get_candidate_my_assessments(
                     deadline=assign.deadline or asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
-                    question_count=len(asm.questions)
+                    question_count=len(asm.questions),
+                    rules=asm.rules
                 )
             )
 
@@ -189,7 +190,8 @@ async def get_candidate_my_assessments(
                     deadline=asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
-                    question_count=len(asm.questions)
+                    question_count=len(asm.questions),
+                    rules=asm.rules
                 )
             )
 
@@ -680,7 +682,8 @@ async def get_my_session(
             title=asm.title,
             description=asm.description,
             duration_minutes=asm.duration_minutes,
-            result_visibility=asm.result_visibility
+            result_visibility=asm.result_visibility,
+            rules=asm.rules
         ),
         submissions=submissions_out
     )
