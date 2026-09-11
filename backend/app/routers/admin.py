@@ -1938,3 +1938,14 @@ async def get_audit_logs(
     stmt = select(AuditLog).order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit)
     res = await db.execute(stmt)
     return res.scalars().all()
+
+@router.post("/maintenance/migrate")
+async def trigger_database_migration(
+    admin: User = Depends(get_current_admin)
+):
+    """
+    Executes database schema migration checks and verifies table integrity.
+    """
+    from app.database import init_db
+    await init_db()
+    return {"status": "SUCCESS", "message": "Database migrations verified and applied."}

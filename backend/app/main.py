@@ -26,24 +26,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS: Allow only explicitly configured origin (Never wildcard *)
+# CORS: Allow explicitly configured origins (Never wildcard *)
 ALLOWED_ORIGINS = [
-    os.getenv("FRONTEND_ORIGIN", "http://localhost:3000"),
+    "https://astranex-assessment-platform.vercel.app",
+    os.getenv("FRONTEND_ORIGIN", "https://astranex-assessment-platform.vercel.app"),
+    "http://localhost:3000",
     "http://127.0.0.1:3000"
 ]
 
+# Security & Audit Middleware (Inner layers)
+app.add_middleware(GenericExceptionMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=120)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS: Outermost middleware so it wraps all responses (including errors and preflight)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+    allow_headers=["*"],
 )
-
-# Security & Audit Middleware
-app.add_middleware(GenericExceptionMiddleware)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=120)
-app.add_middleware(SecurityHeadersMiddleware)
 
 # Register API Routers
 app.include_router(candidate.router)

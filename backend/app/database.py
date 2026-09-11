@@ -64,13 +64,70 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def init_db():
     from sqlalchemy import text
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    
+    # 1. Create any missing tables
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        logger.warning(f"Error during Base.metadata.create_all: {e}")
 
-        # Migration safety: ensure new columns exist in existing database tables
-        migration_statements = [
+    # 2. Database migrations for existing tables
+    is_postgres = "postgresql" in str(engine.url).lower()
+
+    if is_postgres:
+        pg_migration_statements = [
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS phone VARCHAR(50);",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);",
+            "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS role VARCHAR(255) DEFAULT 'Software Engineering';",
+            "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS total_marks FLOAT DEFAULT 100.0;",
+            "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS passing_marks FLOAT DEFAULT 60.0;",
+            "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 1;",
+            "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_code VARCHAR(50);",
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS section VARCHAR(255) DEFAULT 'General';",
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(50) DEFAULT 'Medium';",
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS tags VARCHAR(255) DEFAULT '';",
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE assessment_sessions ALTER COLUMN token_id DROP NOT NULL;",
+            """
+            CREATE TABLE IF NOT EXISTS candidate_assessment_assignments (
+                id VARCHAR(36) PRIMARY KEY,
+                candidate_id VARCHAR(36) NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+                assessment_id VARCHAR(36) NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+                assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                deadline TIMESTAMP WITH TIME ZONE,
+                attempts_used INTEGER DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'NOT_STARTED',
+                CONSTRAINT uq_cand_asm_assignment UNIQUE (candidate_id, assessment_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS integrity_events (
+                id VARCHAR(36) PRIMARY KEY,
+                candidate_id VARCHAR(36) REFERENCES candidates(id) ON DELETE CASCADE,
+                assessment_id VARCHAR(36) REFERENCES assessments(id) ON DELETE CASCADE,
+                session_id VARCHAR(36) REFERENCES assessment_sessions(id) ON DELETE CASCADE,
+                event_type VARCHAR(100) NOT NULL,
+                risk_level VARCHAR(20) DEFAULT 'LOW',
+                details JSON,
+                status VARCHAR(50) DEFAULT 'PENDING',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        ]
+        for stmt in pg_migration_statements:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+            except Exception as e:
+                logger.warning(f"Postgres migration notice for [{stmt.strip()[:60]}...]: {e}")
+    else:
+        sqlite_migration_statements = [
             "ALTER TABLE candidates ADD COLUMN phone VARCHAR(50);",
             "ALTER TABLE candidates ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE candidates ADD COLUMN password_hash VARCHAR(255);",
             "ALTER TABLE assessments ADD COLUMN role VARCHAR(255) DEFAULT 'Software Engineering';",
             "ALTER TABLE assessments ADD COLUMN total_marks FLOAT DEFAULT 100.0;",
             "ALTER TABLE assessments ADD COLUMN passing_marks FLOAT DEFAULT 60.0;",
@@ -82,11 +139,12 @@ async def init_db():
             "ALTER TABLE questions ADD COLUMN tags VARCHAR(255) DEFAULT '';",
             "ALTER TABLE questions ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE';",
         ]
-        for stmt in migration_statements:
+        for stmt in sqlite_migration_statements:
             try:
-                await conn.execute(text(stmt))
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
             except Exception:
-                pass  # Column already exists or table freshly created
+                pass  # Column already exists in SQLite
 
     # Seed default admin user if none exists in production DB
     async with AsyncSessionLocal() as session:

@@ -10,7 +10,7 @@ import {
   FileSpreadsheet, UserPlus, UserCheck, UserX, BarChart3, PieChart
 } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
 type NavigationTab =
   | "dashboard"

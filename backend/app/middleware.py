@@ -68,15 +68,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 class GenericExceptionMiddleware(BaseHTTPMiddleware):
     """
-    Catches unhandled exceptions and returns sanitized generic error messages.
-    NEVER leaks stack traces, SQL errors, or internal module details to the candidate.
+    Catches unhandled exceptions and returns sanitized error messages with CORS headers.
     """
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
             return await call_next(request)
         except Exception as exc:
             logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+            origin = request.headers.get("origin", "https://astranex-assessment-platform.vercel.app")
+            headers = {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"detail": "An internal error occurred. Please try again later."}
+                content={"detail": f"Internal Server Error: {str(exc)}"},
+                headers=headers
             )
