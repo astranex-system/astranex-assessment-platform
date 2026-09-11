@@ -1,17 +1,42 @@
 import os
 from typing import AsyncGenerator
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.models import Base
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./astranex.db")
+RAW_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./astranex.db")
 
-# Convert standard postgresql:// to postgresql+asyncpg:// if needed
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+def sanitize_asyncpg_url(url_str: str) -> str:
+    """
+    Strips PostgreSQL query parameters incompatible with asyncpg (e.g. channel_binding, sslmode)
+    and converts them to asyncpg-supported ssl parameters.
+    """
+    if not url_str.startswith("postgresql"):
+        return url_str
+    
+    # Standardize scheme for async SQLAlchemy
+    if url_str.startswith("postgresql://"):
+        url_str = url_str.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+    parsed = urlparse(url_str)
+    if not parsed.query:
+        return url_str
+        
+    query_params = parse_qs(parsed.query)
+    needs_ssl = "sslmode" in parsed.query
+    
+    # Strip parameters unsupported by asyncpg
+    for param in ["sslmode", "channel_binding", "gssencmode", "target_session_attrs", "sslrootcert"]:
+        query_params.pop(param, None)
+                
+    if needs_ssl and "ssl" not in query_params:
+        query_params["ssl"] = ["require"]
 
-# asyncpg compatibility: convert ?sslmode=require to ?ssl=require
-if "sslmode=" in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=prefer").replace("sslmode=disable", "ssl=disable")
+    new_query = urlencode(query_params, doseq=True)
+    new_parsed = parsed._replace(query=new_query)
+    return urlunparse(new_parsed)
+
+DATABASE_URL = sanitize_asyncpg_url(RAW_DATABASE_URL)
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
