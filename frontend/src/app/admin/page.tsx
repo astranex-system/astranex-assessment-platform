@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, Key, Plus, UserPlus, List, CheckCircle2, AlertCircle, FileText, Code2, Lock } from "lucide-react";
+import { Shield, Key, Plus, UserPlus, List, CheckCircle2, AlertCircle, FileText, Code2, Lock, Upload, FileSpreadsheet } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -11,7 +11,7 @@ export default function AdminDashboard() {
   const [loginPassword, setLoginPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"assessments" | "invites" | "audit">("assessments");
+  const [activeTab, setActiveTab] = useState<"assessments" | "csv_upload" | "invites" | "audit">("assessments");
 
   // Create Assessment Form
   const [title, setTitle] = useState("");
@@ -26,6 +26,11 @@ export default function AdminDashboard() {
   const [correctOptIdx, setCorrectOptIdx] = useState(0);
   const [tcInput, setTcInput] = useState("World");
   const [tcOutput, setTcOutput] = useState("Hello World");
+
+  // CSV Upload State
+  const [selectedCsvFile, setSelectedCsvFile] = useState<File | null>(null);
+  const [csvUploadStatus, setCsvUploadStatus] = useState<string | null>(null);
+  const [isUploadingCsv, setIsUploadingCsv] = useState(false);
 
   // Invite Form
   const [inviteEmail, setInviteEmail] = useState("");
@@ -108,6 +113,37 @@ export default function AdminDashboard() {
       }
     } catch (err: any) {
       alert("Error: " + err.message);
+    }
+  };
+
+  const handleCsvFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createdAsmId) return alert("Please create or select an Assessment ID first.");
+    if (!selectedCsvFile) return alert("Please select a .csv question file to upload.");
+
+    setIsUploadingCsv(true);
+    setCsvUploadStatus(null);
+
+    const formData = new FormData();
+    formData.append("file", selectedCsvFile);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/questions/upload-csv?assessment_id=${createdAsmId}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${adminToken}`
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "CSV upload failed.");
+
+      setCsvUploadStatus(`Success! Imported ${data.imported_questions_count} questions with secret server-side test cases.`);
+    } catch (err: any) {
+      setCsvUploadStatus(`Error: ${err.message}`);
+    } finally {
+      setIsUploadingCsv(false);
     }
   };
 
@@ -205,7 +241,7 @@ export default function AdminDashboard() {
           <h1 style={{ fontSize: "1.4rem", fontWeight: 700 }}>AstraNex Defence Admin Console</h1>
         </div>
 
-        <nav style={{ display: "flex", gap: "1rem" }}>
+        <nav style={{ display: "flex", gap: "0.75rem" }}>
           <button
             onClick={() => setActiveTab("assessments")}
             style={{
@@ -217,8 +253,27 @@ export default function AdminDashboard() {
               cursor: "pointer"
             }}
           >
-            Manage Assessments
+            Create Questions
           </button>
+
+          <button
+            onClick={() => setActiveTab("csv_upload")}
+            style={{
+              padding: "0.5rem 1rem",
+              backgroundColor: activeTab === "csv_upload" ? "var(--accent-blue)" : "transparent",
+              border: "1px solid var(--border-color)",
+              color: "#fff",
+              borderRadius: "6px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem"
+            }}
+          >
+            <FileSpreadsheet size={16} />
+            <span>Upload Questions CSV</span>
+          </button>
+
           <button
             onClick={() => setActiveTab("invites")}
             style={{
@@ -232,6 +287,7 @@ export default function AdminDashboard() {
           >
             Generate Invites
           </button>
+
           <button
             onClick={() => setActiveTab("audit")}
             style={{
@@ -243,7 +299,7 @@ export default function AdminDashboard() {
               cursor: "pointer"
             }}
           >
-            Security Audit Logs
+            Audit Logs
           </button>
         </nav>
       </header>
@@ -260,7 +316,7 @@ export default function AdminDashboard() {
                   type="text"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  placeholder="e.g. Senior Cyber Engineer Test"
+                  placeholder="e.g. Robotics & DSA Evaluation"
                   style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
                 />
               </div>
@@ -280,12 +336,12 @@ export default function AdminDashboard() {
             {createdAsmId && <div style={{ marginTop: "1rem", color: "var(--accent-cyan)", fontSize: "0.85rem" }}>Active Assessment ID: {createdAsmId}</div>}
           </div>
 
-          {/* Add Question with Answer Key */}
+          {/* Add Single Question */}
           <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px" }}>
-            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>2. Add Question & Secret Answer Key</h3>
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>2. Add Single Question</h3>
             <form onSubmit={handleAddQuestion}>
               <div style={{ marginBottom: "1rem" }}>
-                <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>QUESTION TEXT</label>
+                <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>QUESTION STATEMENT</label>
                 <input
                   type="text"
                   value={qText}
@@ -318,32 +374,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {qType === "MCQ" && (
-                <>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>OPTIONS (ONE PER LINE)</label>
-                    <textarea
-                      value={optionsText}
-                      onChange={e => setOptionsText(e.target.value)}
-                      rows={4}
-                      style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: "1rem" }}>
-                    <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>CORRECT OPTION INDEX (0-BASED)</label>
-                    <input
-                      type="number"
-                      value={correctOptIdx}
-                      onChange={e => setCorrectOptIdx(Number(e.target.value))}
-                      style={{ width: "80px", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
-                    />
-                  </div>
-                </>
-              )}
-
               {qType === "CODING" && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>SECRET HIDDEN TEST CASE INPUT / OUTPUT</label>
+                  <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>SECRET TEST CASE (INPUT / EXPECTED OUTPUT)</label>
                   <input
                     type="text"
                     value={tcInput}
@@ -362,10 +395,94 @@ export default function AdminDashboard() {
               )}
 
               <button type="submit" style={{ padding: "0.6rem 1.2rem", backgroundColor: "var(--accent-blue)", border: "none", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
-                Add Question & Secret Key
+                Save Question & Answer Key
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {activeTab === "csv_upload" && (
+        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "2rem", borderRadius: "10px", maxWidth: "700px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+            <FileSpreadsheet color="var(--accent-cyan)" size={28} />
+            <div>
+              <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Bulk Questions CSV Importer</h3>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Upload CSV files containing DSA, Robotics, or MCQ questions & test cases.</p>
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: "#090e1a", border: "1px solid var(--border-color)", padding: "1rem", borderRadius: "6px", marginBottom: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            <p style={{ fontWeight: 600, color: "#fff", marginBottom: "0.3rem" }}>Expected CSV Header Format:</p>
+            <code>type,section,topic,subTopic,tags,questionText,language,testCases,marks,difficulty,timeLimit,memoryLimit</code>
+          </div>
+
+          <form onSubmit={handleCsvFileUpload}>
+            <div style={{ marginBottom: "1.25rem" }}>
+              <label style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "block", marginBottom: "0.4rem" }}>TARGET ASSESSMENT ID</label>
+              <input
+                type="text"
+                value={createdAsmId || ""}
+                onChange={e => setCreatedAsmId(e.target.value)}
+                placeholder="Paste Assessment ID or create one in tab 1..."
+                style={{ width: "100%", padding: "0.75rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "6px" }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "block", marginBottom: "0.4rem" }}>SELECT QUESTIONS CSV FILE</label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={e => setSelectedCsvFile(e.target.files ? e.target.files[0] : null)}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  backgroundColor: "#060911",
+                  border: "1px solid var(--border-color)",
+                  color: "#fff",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isUploadingCsv}
+              style={{
+                width: "100%",
+                padding: "0.85rem",
+                backgroundColor: isUploadingCsv ? "#1f293d" : "var(--accent-cyan)",
+                border: "none",
+                color: "#000",
+                fontWeight: 700,
+                borderRadius: "6px",
+                cursor: isUploadingCsv ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem"
+              }}
+            >
+              <Upload size={18} />
+              <span>{isUploadingCsv ? "Parsing & Uploading CSV..." : "Import Questions CSV"}</span>
+            </button>
+          </form>
+
+          {csvUploadStatus && (
+            <div style={{
+              marginTop: "1.5rem",
+              padding: "1rem",
+              backgroundColor: csvUploadStatus.startsWith("Error") ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
+              border: `1px solid ${csvUploadStatus.startsWith("Error") ? "var(--accent-red)" : "var(--accent-green)"}`,
+              borderRadius: "6px",
+              color: csvUploadStatus.startsWith("Error") ? "var(--accent-red)" : "var(--accent-green)",
+              fontSize: "0.9rem"
+            }}>
+              {csvUploadStatus}
+            </div>
+          )}
         </div>
       )}
 
@@ -410,7 +527,7 @@ export default function AdminDashboard() {
 
           {generatedInvite && (
             <div style={{ marginTop: "1.5rem", backgroundColor: "#090e1a", border: "1px solid var(--accent-cyan)", padding: "1rem", borderRadius: "6px" }}>
-              <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "0.5rem" }}>INVIATION LINK GENERATED</p>
+              <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "0.5rem" }}>INVITATION LINK GENERATED</p>
               <code style={{ fontSize: "0.85rem", color: "#38bdf8", wordBreak: "break-all" }}>
                 {window.location.origin}{generatedInvite.assessment_link}
               </code>
