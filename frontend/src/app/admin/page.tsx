@@ -742,54 +742,122 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Main Tab 3: Invites */}
+      {/* Main Tab 3: Invites / Access Links */}
       {activeTab === "invites" && (
-        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px", maxWidth: "600px" }}>
-          <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>Generate Secure Invitation Link</h3>
-          <form onSubmit={handleGenerateInvite}>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>CANDIDATE NAME</label>
-              <input
-                type="text"
-                value={inviteName}
-                onChange={e => setInviteName(e.target.value)}
-                placeholder="Jane Doe"
-                style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
-              />
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: "700px" }}>
+          {/* Universal Candidate Login Link Card */}
+          <div style={{
+            backgroundColor: "var(--bg-card)",
+            border: "1px solid var(--accent-cyan)",
+            padding: "1.5rem",
+            borderRadius: "8px",
+            boxShadow: "0 0 15px rgba(6, 182, 212, 0.1)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+              <Sparkles size={22} color="var(--accent-cyan)" />
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>Universal Candidate Examination Link</h3>
             </div>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>CANDIDATE EMAIL</label>
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                placeholder="jane@example.com"
-                style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
-              />
-            </div>
-            <div style={{ marginBottom: "1rem" }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>ASSESSMENT ID</label>
-              <input
-                type="text"
-                value={inviteAsmId}
-                onChange={e => setInviteAsmId(e.target.value)}
-                placeholder="Paste Assessment UUID..."
-                style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
-              />
-            </div>
-            <button type="submit" style={{ width: "100%", padding: "0.65rem 1.2rem", backgroundColor: "var(--accent-cyan)", border: "none", color: "#000", fontWeight: 700, borderRadius: "4px", cursor: "pointer" }}>
-              Generate Single-Use Link
-            </button>
-          </form>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.5 }}>
+              Share this single link with all your candidates! Candidates simply open the portal, enter their <strong>Full Name</strong> and <strong>Email Address</strong>, select the exam, and begin immediately. No manual link generation needed!
+            </p>
 
-          {generatedInvite && (
-            <div style={{ marginTop: "1.5rem", backgroundColor: "#090e1a", border: "1px solid var(--accent-cyan)", padding: "1rem", borderRadius: "6px" }}>
-              <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "0.5rem" }}>INVITATION LINK GENERATED</p>
-              <code style={{ fontSize: "0.85rem", color: "#38bdf8", wordBreak: "break-all" }}>
-                {window.location.origin}{generatedInvite.assessment_link}
-              </code>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              backgroundColor: "#060911",
+              border: "1px solid var(--border-color)",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "6px"
+            }}>
+              <input
+                type="text"
+                readOnly
+                value={typeof window !== "undefined" ? window.location.origin : "https://astranex-assessment-platform.vercel.app"}
+                style={{
+                  flex: 1,
+                  backgroundColor: "transparent",
+                  border: "none",
+                  color: "var(--accent-cyan)",
+                  fontSize: "0.9rem",
+                  fontFamily: "var(--font-mono)",
+                  outline: "none"
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const url = typeof window !== "undefined" ? window.location.origin : "https://astranex-assessment-platform.vercel.app";
+                  navigator.clipboard.writeText(url);
+                  alert("Copied Candidate Portal Link to clipboard!");
+                }}
+                style={{
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "var(--accent-blue)",
+                  border: "none",
+                  borderRadius: "4px",
+                  color: "#fff",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                  cursor: "pointer"
+                }}
+              >
+                Copy Link
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Optional: Individual Token-Based Invite Link Generator */}
+          <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px" }}>
+            <h3 style={{ fontSize: "1.05rem", fontWeight: 600, marginBottom: "0.5rem" }}>Optional: Private Single-Use Token Generator</h3>
+            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
+              Generate an exclusive 48-hour secure token link for a specific candidate.
+            </p>
+            <form onSubmit={handleGenerateInvite}>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>CANDIDATE NAME</label>
+                <input
+                  type="text"
+                  value={inviteName}
+                  onChange={e => setInviteName(e.target.value)}
+                  placeholder="Jane Doe"
+                  style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
+                />
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>CANDIDATE EMAIL</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="jane@example.com"
+                  style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
+                />
+              </div>
+              <div style={{ marginBottom: "1rem" }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>ASSESSMENT ID</label>
+                <input
+                  type="text"
+                  value={inviteAsmId}
+                  onChange={e => setInviteAsmId(e.target.value)}
+                  placeholder="Paste Assessment UUID..."
+                  style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
+                />
+              </div>
+              <button type="submit" style={{ width: "100%", padding: "0.65rem 1.2rem", backgroundColor: "#1e293b", border: "1px solid var(--border-color)", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
+                Generate Token Link
+              </button>
+            </form>
+
+            {generatedInvite && (
+              <div style={{ marginTop: "1.5rem", backgroundColor: "#090e1a", border: "1px solid var(--accent-cyan)", padding: "1rem", borderRadius: "6px" }}>
+                <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--accent-cyan)", marginBottom: "0.5rem" }}>INVITATION LINK GENERATED</p>
+                <code style={{ fontSize: "0.85rem", color: "#38bdf8", wordBreak: "break-all" }}>
+                  {typeof window !== "undefined" ? window.location.origin : ""}{generatedInvite.assessment_link}
+                </code>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

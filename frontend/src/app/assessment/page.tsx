@@ -49,16 +49,22 @@ export default function AssessmentWorkspace() {
     fetchSessionAndQuestions();
   }, []);
 
+  const getAuthHeaders = () => {
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("astranex_candidate_token") : null;
+    const csrf = typeof window !== "undefined" ? sessionStorage.getItem("astranex_csrf") : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return headers;
+  };
+
   // Telemetry: Focus loss tracker
   useEffect(() => {
     const handleBlur = () => {
-      const csrf = sessionStorage.getItem("astranex_csrf") || "";
       fetch(`${API_BASE}/api/v1/candidate/telemetry/focus`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf
-        },
+        headers: getAuthHeaders(),
+        credentials: "include",
         body: JSON.stringify({ timestamp: new Date().toISOString() })
       }).catch(() => {});
     };
@@ -89,9 +95,10 @@ export default function AssessmentWorkspace() {
   const fetchSessionAndQuestions = async () => {
     try {
       setLoading(true);
+      const authHeaders = getAuthHeaders();
       const [sessRes, qRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/candidate/session/me`, { headers: { "Content-Type": "application/json" } }),
-        fetch(`${API_BASE}/api/v1/candidate/questions`, { headers: { "Content-Type": "application/json" } })
+        fetch(`${API_BASE}/api/v1/candidate/session/me`, { headers: authHeaders, credentials: "include" }),
+        fetch(`${API_BASE}/api/v1/candidate/questions`, { headers: authHeaders, credentials: "include" })
       ]);
 
       if (sessRes.status === 401 || qRes.status === 401) {
@@ -168,17 +175,14 @@ export default function AssessmentWorkspace() {
     const subData = submissions[qId];
     if (!subData) return;
 
-    const csrf = sessionStorage.getItem("astranex_csrf") || "";
     setSubmitting(true);
     setSaveMessage(null);
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/candidate/submit`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf
-        },
+        headers: getAuthHeaders(),
+        credentials: "include",
         body: JSON.stringify(subData)
       });
 
@@ -199,15 +203,12 @@ export default function AssessmentWorkspace() {
       return;
     }
 
-    const csrf = sessionStorage.getItem("astranex_csrf") || "";
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/v1/candidate/session/finish`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrf
-        }
+        headers: getAuthHeaders(),
+        credentials: "include"
       });
       const data = await res.json();
       setFinalResult(data);
@@ -289,10 +290,23 @@ export default function AssessmentWorkspace() {
         justifyContent: "space-between",
         padding: "0 1.5rem"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "36px", objectFit: "contain", borderRadius: "4px" }} />
           <span style={{ color: "var(--border-color)" }}>|</span>
           <span style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>{session?.assessment?.title}</span>
+          {session?.candidate_name && (
+            <span style={{
+              fontSize: "0.8rem",
+              color: "var(--accent-cyan)",
+              backgroundColor: "rgba(6, 182, 212, 0.12)",
+              border: "1px solid rgba(6, 182, 212, 0.3)",
+              padding: "0.2rem 0.6rem",
+              borderRadius: "4px",
+              fontWeight: 500
+            }}>
+              Candidate: {session.candidate_name}
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>

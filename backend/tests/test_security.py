@@ -195,3 +195,67 @@ except Exception as e:
 """
     res_disk = IsolatedCodeRunner.run_code(disk_code, "python")
     assert res_disk["status"] in ["SUCCESS", "RUNTIME_ERROR", "EXECUTION_ERROR"]
+
+@pytest.mark.asyncio
+async def test_candidate_login_based_access(async_client: AsyncClient):
+    """
+    SECURITY TEST 18:
+    Asserts candidate can log in using Name and Email, receive authenticated session and CSRF token,
+    and fetch public assessments list without answer keys.
+    """
+    async with TestingSessionLocal() as db:
+        admin = User(email="recruiter.test@astranex.def", password_hash=hash_password("admin123"), full_name="Recruiter", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.flush()
+
+        asm = Assessment(title="Robotics Engineer Exam", created_by=admin.id, duration_minutes=45)
+        db.add(asm)
+        await db.flush()
+
+        q = Question(assessment_id=asm.id, question_text="What is ROS?", question_type=QuestionType.MCQ, marks=5.0)
+        db.add(q)
+        await db.flush()
+
+        opt = QuestionOption(question_id=q.id, option_text="Robot Operating System", display_order=1)
+        db.add(opt)
+        await db.commit()
+        asm_id = asm.id
+
+    # 1. Fetch public assessments
+    resp_asm = await async_client.get("/api/v1/candidate/assessments")
+    assert resp_asm.status_code == 200
+    asm_list = resp_asm.json()
+    assert len(asm_list) >= 1
+    found_asm = [a for a in asm_list if a["id"] == asm_id]
+    assert len(found_asm) == 1
+    assert found_asm[0]["duration_minutes"] == 45
+    assert found_asm[0]["question_count"] == 1
+
+    # 2. Candidate logs in with Name and Email
+    resp_login = await async_client.post(
+        "/api/v1/candidate/login",
+        json={
+            "email": "applicant.test@astranex.def",
+            "full_name": "Test Applicant",
+            "assessment_id": asm_id
+        }
+    )
+    assert resp_login.status_code == 200
+    data = resp_login.json()
+    assert data["session_id"] is not None
+    assert data["access_token"] is not None
+    assert data["csrf_token"] is not None
+    assert data["candidate_name"] == "Test Applicant"
+    assert data["assessment_title"] == "Robotics Engineer Exam"
+
+    # 3. Access session/me with Authorization header
+    resp_me = await async_client.get(
+        "/api/v1/candidate/session/me",
+        headers={"Authorization": f"Bearer {data['access_token']}"}
+    )
+    assert resp_me.status_code == 200
+    me_data = resp_me.json()
+    assert me_data["session_id"] == data["session_id"]
+    assert me_data["candidate_name"] == "Test Applicant"
+    assert me_data["candidate_email"] == "applicant.test@astranex.def"
+

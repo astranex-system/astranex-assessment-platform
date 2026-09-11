@@ -7,6 +7,20 @@ from app.models import QuestionType, SessionStatus, ResultVisibility
 class StartSessionRequest(BaseModel):
     token: str = Field(..., description="Unique single-use assessment invitation token")
 
+class CandidateLoginRequest(BaseModel):
+    email: str = Field(..., description="Candidate email address")
+    full_name: str = Field(..., description="Candidate full name")
+    assessment_id: Optional[str] = Field(None, description="Assessment ID (optional, defaults to active assessment)")
+
+class PublicAssessmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    description: Optional[str] = None
+    duration_minutes: int
+    question_count: int = 0
+
 class SubmissionRequest(BaseModel):
     question_id: str
     selected_option_id: Optional[str] = None
@@ -62,6 +76,8 @@ class CandidateSessionMeOut(BaseModel):
     started_at: datetime
     expires_at: datetime
     server_time: datetime
+    candidate_name: Optional[str] = None
+    candidate_email: Optional[str] = None
     assessment: CandidateAssessmentOut
     submissions: List[CandidateSubmissionStateOut] = []
 
