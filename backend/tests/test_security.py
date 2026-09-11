@@ -1,5 +1,6 @@
 import pytest
 import json
+import io
 from datetime import datetime, timedelta, timezone
 from httpx import AsyncClient
 from app.security import hash_password, create_access_token, hash_token, generate_secure_token
@@ -385,5 +386,98 @@ async def test_admin_safe_delete_cascade(async_client: AsyncClient):
     )
     assert resp_del.status_code == 200
     assert "deleted successfully" in resp_del.json()["message"]
+
+@pytest.mark.asyncio
+async def test_admin_dashboard_and_candidate_assignment(async_client: AsyncClient):
+    """
+    SECURITY & FUNCTIONAL TEST:
+    Verifies Admin dashboard metrics, candidate assignment without invitation tokens,
+    and candidate 'My Assessments' access.
+    """
+    async with TestingSessionLocal() as db:
+        admin = User(email="admin.flow@astranex.def", password_hash=hash_password("admin123"), full_name="Admin Flow", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.commit()
+        admin_id = admin.id
+
+    admin_token = create_access_token({"user_id": admin_id, "email": "admin.flow@astranex.def", "role": "admin"})
+
+    # 1. Create Assessment
+    resp_asm = await async_client.post(
+        "/api/v1/admin/assessments",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={"title": "Avionics Software Assessment", "role": "Avionics Engineer", "duration_minutes": 75, "total_marks": 100.0, "passing_marks": 60.0}
+    )
+    assert resp_asm.status_code == 200
+    asm_id = resp_asm.json()["id"]
+
+    # 2. Register Candidate
+    resp_reg = await async_client.post(
+        "/api/v1/candidate/register",
+        json={"full_name": "Rohan Sharma", "email": "rohan.sharma@defence.org", "password": "securepassword123", "assessment_id": asm_id}
+    )
+    assert resp_reg.status_code == 200
+
+    # 3. Check Candidates list as Admin
+    resp_cands = await async_client.get(
+        "/api/v1/admin/candidates",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert resp_cands.status_code == 200
+    cands_data = resp_cands.json()
+    assert any(c["email"] == "rohan.sharma@defence.org" for c in cands_data)
+
+    # 4. Check Dashboard Metrics
+    resp_metrics = await async_client.get(
+        "/api/v1/admin/dashboard/metrics",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert resp_metrics.status_code == 200
+    metrics = resp_metrics.json()
+    assert metrics["total_candidates"] >= 1
+    assert "assessments_overview" in metrics
+
+    # 5. Candidate checks 'My Assessments'
+    resp_my_asms = await async_client.post(
+        "/api/v1/candidate/my-assessments",
+        json={"email": "rohan.sharma@defence.org", "password": "securepassword123"}
+    )
+    assert resp_my_asms.status_code == 200
+    my_asms = resp_my_asms.json()
+    assert len(my_asms) >= 1
+    assert my_asms[0]["title"] == "Avionics Software Assessment"
+
+@pytest.mark.asyncio
+async def test_predefined_csv_validation(async_client: AsyncClient):
+    """
+    SECURITY & VALIDATION TEST:
+    Verifies strict predefined CSV validation detects errors and reports exact rows.
+    """
+    async with TestingSessionLocal() as db:
+        admin = User(email="admin.csv@astranex.def", password_hash=hash_password("admin123"), full_name="Admin CSV", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.commit()
+        admin_id = admin.id
+
+    admin_token = create_access_token({"user_id": admin_id, "email": "admin.csv@astranex.def", "role": "admin"})
+
+    csv_content = '''questionId,section,questionType,question,option1,option2,option3,option4,correctAnswer,marks,difficulty,tags,testCases
+Q101,Python,MCQ,What is GIL in Python?,Global Interpreter Lock,General Interface Level,Generic Input Link,None of these,Global Interpreter Lock,2.0,Easy,python,
+Q102,Python,MCQ,Invalid MCQ question missing answer,Opt1,Opt2,Opt3,Opt4,NonExistentAnswer,2.0,Medium,python,
+Q103,Algorithms,CODING,Implement Binary Search,,,,,,10.0,Hard,search,"[{""input"":""1 2 3"",""expectedOutput"":""2""}]"
+'''
+    files = {"file": ("questions.csv", io.BytesIO(csv_content.encode("utf-8")), "text/csv")}
+    resp_val = await async_client.post(
+        "/api/v1/admin/questions/validate-csv",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        files=files
+    )
+    assert resp_val.status_code == 200
+    val_data = resp_val.json()
+    assert val_data["total_rows"] == 3
+    assert val_data["valid_count"] == 2
+    assert val_data["invalid_count"] == 1
+    assert any("does not match any of the provided options" in err["error"] for err in val_data["errors"])
+
 
 

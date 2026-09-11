@@ -39,6 +39,21 @@ class FocusLossTelemetryRequest(BaseModel):
     timestamp: Optional[datetime] = None
 
 # --- Sanitized Response DTOs (Zero Answer Leakage Guaranteed) ---
+class CandidateAssessmentCardOut(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    role: str = "Software Engineering"
+    duration_minutes: int
+    total_marks: float = 100.0
+    passing_marks: float = 60.0
+    start_window: Optional[datetime] = None
+    end_window: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    attempts_remaining: int = 1
+    status: str = "NOT_STARTED"  # NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED
+    question_count: int = 0
+
 class CandidateQuestionOptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,9 +66,12 @@ class CandidateQuestionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    question_code: Optional[str] = None
+    section: str = "General"
     question_text: str
     question_type: QuestionType
     marks: float
+    difficulty: str = "Medium"
     display_order: int
     options: List[CandidateQuestionOptionOut] = []
     # NOTE: Strictly ZERO answer keys, correct_option_id, hidden_test_cases, or expected_output fields!

@@ -63,8 +63,30 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 async def init_db():
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Migration safety: ensure new columns exist in existing database tables
+        migration_statements = [
+            "ALTER TABLE candidates ADD COLUMN phone VARCHAR(50);",
+            "ALTER TABLE candidates ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE assessments ADD COLUMN role VARCHAR(255) DEFAULT 'Software Engineering';",
+            "ALTER TABLE assessments ADD COLUMN total_marks FLOAT DEFAULT 100.0;",
+            "ALTER TABLE assessments ADD COLUMN passing_marks FLOAT DEFAULT 60.0;",
+            "ALTER TABLE assessments ADD COLUMN max_attempts INTEGER DEFAULT 1;",
+            "ALTER TABLE assessments ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE';",
+            "ALTER TABLE questions ADD COLUMN question_code VARCHAR(50);",
+            "ALTER TABLE questions ADD COLUMN section VARCHAR(255) DEFAULT 'General';",
+            "ALTER TABLE questions ADD COLUMN difficulty VARCHAR(50) DEFAULT 'Medium';",
+            "ALTER TABLE questions ADD COLUMN tags VARCHAR(255) DEFAULT '';",
+            "ALTER TABLE questions ADD COLUMN status VARCHAR(50) DEFAULT 'ACTIVE';",
+        ]
+        for stmt in migration_statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass  # Column already exists or table freshly created
 
     # Seed default admin user if none exists in production DB
     async with AsyncSessionLocal() as session:

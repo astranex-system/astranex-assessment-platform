@@ -84,7 +84,7 @@ async def get_current_admin(
     db: AsyncSession = Depends(get_db)
 ) -> User:
     """
-    Validates admin/recruiter credentials. Candidates can NEVER pass this dependency.
+    Validates admin, recruiter, or evaluator credentials. Candidates can NEVER pass this dependency.
     """
     auth_header = request.headers.get("Authorization")
     token = None
@@ -98,7 +98,7 @@ async def get_current_admin(
         )
 
     payload = decode_access_token(token)
-    if not payload or payload.get("role") not in [UserRole.ADMIN, UserRole.RECRUITER]:
+    if not payload or payload.get("role") not in [UserRole.ADMIN, UserRole.RECRUITER, UserRole.EVALUATOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Admin or Recruiter role required."
@@ -112,7 +112,19 @@ async def get_current_admin(
     if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or deactivated admin account."
+            detail="Invalid or deactivated administrative account."
         )
 
     return user
+
+def require_roles(*allowed_roles: UserRole):
+    """Factory dependency for enforcing granular RBAC on administrative endpoints."""
+    async def role_checker(current_user: User = Depends(get_current_admin)) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied. Requires one of: {[r.value for r in allowed_roles]}"
+            )
+        return current_user
+    return role_checker
+

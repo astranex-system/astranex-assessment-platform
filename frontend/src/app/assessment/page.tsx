@@ -270,6 +270,27 @@ export default function AssessmentWorkspace() {
           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
             Recruiters will be notified automatically. You may close this window safely.
           </div>
+
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            style={{
+              marginTop: "1.25rem",
+              padding: "0.75rem 1.5rem",
+              backgroundColor: "var(--accent-blue)",
+              border: "none",
+              borderRadius: "6px",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem"
+            }}
+          >
+            ← Return to Candidate Dashboard
+          </button>
         </div>
       </div>
     );

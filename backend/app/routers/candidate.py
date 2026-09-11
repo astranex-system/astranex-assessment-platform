@@ -67,6 +67,134 @@ async def list_available_assessments(db: AsyncSession = Depends(get_db)):
         )
     return out
 
+from app.models import (
+    AssessmentToken, AssessmentSession, Assessment, Candidate, Question, QuestionOption,
+    Submission, SessionStatus, ResultVisibility, AuditLog, QuestionType, CandidateAssessmentAssignment
+)
+from app.schemas.candidate import (
+    StartSessionRequest, CandidateRegisterRequest, CandidateLoginRequest, PublicAssessmentOut, SubmissionRequest,
+    CandidateSessionMeOut, CandidateQuestionOut, CandidateSubmissionResultOut,
+    CandidateFinalResultOut, CandidateAssessmentOut, CandidateQuestionOptionOut,
+    CandidateSubmissionStateOut, FocusLossTelemetryRequest, CandidateAssessmentCardOut
+)
+
+@router.post("/my-assessments", response_model=List[CandidateAssessmentCardOut])
+async def get_candidate_my_assessments(
+    payload: CandidateLoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Candidate 'My Assessments' Dashboard API:
+    Authenticates candidate with Email & Password and returns all technical exams assigned to their account,
+    including duration, deadline, attempts, questions count, and status (NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED).
+    """
+    email_clean = payload.email.strip().lower()
+    cand_stmt = (
+        select(Candidate)
+        .options(
+            selectinload(Candidate.assignments).selectinload(CandidateAssessmentAssignment.assessment).selectinload(Assessment.questions),
+            selectinload(Candidate.sessions).selectinload(AssessmentSession.assessment).selectinload(Assessment.questions)
+        )
+        .where(Candidate.email == email_clean)
+    )
+    cand_res = await db.execute(cand_stmt)
+    candidate = cand_res.scalar_one_or_none()
+
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email. Please click 'Register' to create your candidate account first."
+        )
+
+    if candidate.password_hash:
+        if not payload.password:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Password is required for this account.")
+        if not verify_password(payload.password, candidate.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password. Please verify and try again.")
+
+    if candidate.status in ["SUSPENDED", "DISQUALIFIED"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your candidate account has been {candidate.status.lower()}. Please contact the administrator.")
+
+    # Determine assigned assessments
+    assigned_asms = []
+    seen_asm_ids = set()
+
+    # 1. Direct assignments
+    for assign in candidate.assignments:
+        asm = assign.assessment
+        if asm and asm.id not in seen_asm_ids:
+            seen_asm_ids.add(asm.id)
+            # Find latest session for this assessment
+            cand_sess = [s for s in candidate.sessions if s.assessment_id == asm.id]
+            card_status = "NOT_STARTED"
+            if cand_sess:
+                latest_s = sorted(cand_sess, key=lambda x: x.started_at, reverse=True)[0]
+                if latest_s.status == SessionStatus.SUBMITTED:
+                    card_status = "COMPLETED"
+                elif latest_s.status == SessionStatus.IN_PROGRESS:
+                    card_status = "IN_PROGRESS"
+                elif latest_s.status == SessionStatus.EXPIRED:
+                    card_status = "EXPIRED"
+
+            assigned_asms.append(
+                CandidateAssessmentCardOut(
+                    id=asm.id,
+                    title=asm.title,
+                    description=asm.description,
+                    role=asm.role or "Software Engineering",
+                    duration_minutes=asm.duration_minutes,
+                    total_marks=asm.total_marks or sum(q.marks for q in asm.questions),
+                    passing_marks=asm.passing_marks or 60.0,
+                    start_window=asm.start_window,
+                    end_window=asm.end_window,
+                    deadline=assign.deadline or asm.end_window,
+                    attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
+                    status=card_status,
+                    question_count=len(asm.questions)
+                )
+            )
+
+    # 2. If no direct assignments exist, show public active assessments so candidates can take tests
+    if not assigned_asms:
+        all_active_stmt = (
+            select(Assessment)
+            .options(selectinload(Assessment.questions))
+            .where(Assessment.status.in_(["ACTIVE", "PUBLISHED"]))
+            .order_by(Assessment.created_at.desc())
+        )
+        all_res = await db.execute(all_active_stmt)
+        for asm in all_res.scalars().all():
+            cand_sess = [s for s in candidate.sessions if s.assessment_id == asm.id]
+            card_status = "NOT_STARTED"
+            if cand_sess:
+                latest_s = sorted(cand_sess, key=lambda x: x.started_at, reverse=True)[0]
+                if latest_s.status == SessionStatus.SUBMITTED:
+                    card_status = "COMPLETED"
+                elif latest_s.status == SessionStatus.IN_PROGRESS:
+                    card_status = "IN_PROGRESS"
+                elif latest_s.status == SessionStatus.EXPIRED:
+                    card_status = "EXPIRED"
+
+            assigned_asms.append(
+                CandidateAssessmentCardOut(
+                    id=asm.id,
+                    title=asm.title,
+                    description=asm.description,
+                    role=asm.role or "Software Engineering",
+                    duration_minutes=asm.duration_minutes,
+                    total_marks=asm.total_marks or sum(q.marks for q in asm.questions),
+                    passing_marks=asm.passing_marks or 60.0,
+                    start_window=asm.start_window,
+                    end_window=asm.end_window,
+                    deadline=asm.end_window,
+                    attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
+                    status=card_status,
+                    question_count=len(asm.questions)
+                )
+            )
+
+    return assigned_asms
+
 @router.post("/register")
 async def candidate_register(
     payload: CandidateRegisterRequest,

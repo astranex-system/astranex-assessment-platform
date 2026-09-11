@@ -12,6 +12,7 @@ Base = declarative_base()
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     RECRUITER = "recruiter"
+    EVALUATOR = "evaluator"
     CANDIDATE = "candidate"
 
 class QuestionType(str, enum.Enum):
@@ -46,11 +47,15 @@ class Candidate(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, nullable=False, index=True)
     full_name = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=True)
+    status = Column(String(50), default="ACTIVE")  # ACTIVE, SUSPENDED, DISQUALIFIED
     password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     tokens = relationship("AssessmentToken", back_populates="candidate", cascade="all, delete-orphan")
     sessions = relationship("AssessmentSession", back_populates="candidate", cascade="all, delete-orphan")
+    assignments = relationship("CandidateAssessmentAssignment", back_populates="candidate", cascade="all, delete-orphan")
+    integrity_events = relationship("IntegrityEvent", back_populates="candidate", cascade="all, delete-orphan")
 
 class Assessment(Base):
     __tablename__ = "assessments"
@@ -58,7 +63,12 @@ class Assessment(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
+    role = Column(String(255), nullable=True, default="Software Engineering")
     duration_minutes = Column(Integer, nullable=False, default=60)
+    total_marks = Column(Float, nullable=False, default=100.0)
+    passing_marks = Column(Float, nullable=False, default=60.0)
+    max_attempts = Column(Integer, nullable=False, default=1)
+    status = Column(String(50), nullable=False, default="ACTIVE")  # DRAFT, PUBLISHED, ACTIVE, CLOSED, ARCHIVED
     start_window = Column(DateTime(timezone=True), nullable=True)
     end_window = Column(DateTime(timezone=True), nullable=True)
     result_visibility = Column(SQLEnum(ResultVisibility), default=ResultVisibility.NEVER)
@@ -68,20 +78,43 @@ class Assessment(Base):
     questions = relationship("Question", back_populates="assessment", cascade="all, delete-orphan", order_by="Question.display_order")
     tokens = relationship("AssessmentToken", back_populates="assessment", cascade="all, delete-orphan")
     sessions = relationship("AssessmentSession", back_populates="assessment", cascade="all, delete-orphan")
+    assignments = relationship("CandidateAssessmentAssignment", back_populates="assessment", cascade="all, delete-orphan")
+
+class CandidateAssessmentAssignment(Base):
+    __tablename__ = "candidate_assessment_assignments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    candidate_id = Column(String(36), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    assessment_id = Column(String(36), ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
+    assigned_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deadline = Column(DateTime(timezone=True), nullable=True)
+    attempts_used = Column(Integer, default=0)
+    status = Column(String(50), default="NOT_STARTED")  # NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "assessment_id", name="uq_cand_asm_assignment"),
+    )
+
+    candidate = relationship("Candidate", back_populates="assignments")
+    assessment = relationship("Assessment", back_populates="assignments")
 
 class Question(Base):
     __tablename__ = "questions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     assessment_id = Column(String(36), ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
+    question_code = Column(String(50), nullable=True)  # e.g. Q001, Q022
+    section = Column(String(255), nullable=False, default="General")
     question_text = Column(Text, nullable=False)
     question_type = Column(SQLEnum(QuestionType), nullable=False)
     marks = Column(Float, nullable=False, default=1.0)
+    difficulty = Column(String(50), nullable=False, default="Medium")  # Easy, Medium, Hard
+    tags = Column(String(255), nullable=True, default="")
+    status = Column(String(50), nullable=False, default="ACTIVE")
     display_order = Column(Integer, nullable=False, default=0)
 
     assessment = relationship("Assessment", back_populates="questions")
     options = relationship("QuestionOption", back_populates="question", cascade="all, delete-orphan", order_by="QuestionOption.display_order")
-    # Secret answer key relationship (strictly used on server-side during evaluation)
     answer = relationship("QuestionAnswer", back_populates="question", uselist=False, cascade="all, delete-orphan")
 
 class QuestionOption(Base):
@@ -105,7 +138,7 @@ class QuestionAnswer(Base):
     question_id = Column(String(36), ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
     correct_option_id = Column(String(36), ForeignKey("question_options.id", ondelete="SET NULL"), nullable=True)
     rubric_text = Column(Text, nullable=True)
-    hidden_test_cases = Column(JSON, nullable=True)  # List of {"input": "...", "expected_output": "...", "points": 1.0}
+    hidden_test_cases = Column(JSON, nullable=True)
 
     question = relationship("Question", back_populates="answer")
 
@@ -130,7 +163,7 @@ class AssessmentSession(Base):
     __tablename__ = "assessment_sessions"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    token_id = Column(String(36), ForeignKey("assessment_tokens.id", ondelete="CASCADE"), nullable=False)
+    token_id = Column(String(36), ForeignKey("assessment_tokens.id", ondelete="CASCADE"), nullable=True)
     candidate_id = Column(String(36), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
     assessment_id = Column(String(36), ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
     status = Column(SQLEnum(SessionStatus), default=SessionStatus.IN_PROGRESS, nullable=False)
@@ -146,6 +179,7 @@ class AssessmentSession(Base):
     assessment = relationship("Assessment", back_populates="sessions")
     submissions = relationship("Submission", back_populates="session", cascade="all, delete-orphan")
     results = relationship("EvaluationResult", back_populates="session", cascade="all, delete-orphan")
+    integrity_events = relationship("IntegrityEvent", back_populates="session", cascade="all, delete-orphan")
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -190,3 +224,20 @@ class AuditLog(Base):
     ip_address = Column(String(45), nullable=True)
     metadata_json = Column(JSON, nullable=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+class IntegrityEvent(Base):
+    __tablename__ = "integrity_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    candidate_id = Column(String(36), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=True)
+    assessment_id = Column(String(36), ForeignKey("assessments.id", ondelete="CASCADE"), nullable=True)
+    session_id = Column(String(36), ForeignKey("assessment_sessions.id", ondelete="CASCADE"), nullable=True)
+    event_type = Column(String(100), nullable=False)
+    risk_level = Column(String(20), default="LOW")  # LOW, MEDIUM, HIGH
+    details = Column(JSON, nullable=True)
+    status = Column(String(50), default="PENDING")  # PENDING, REVIEWED, DISMISSED, DISQUALIFIED
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+    candidate = relationship("Candidate", back_populates="integrity_events")
+    session = relationship("AssessmentSession", back_populates="integrity_events")
+
