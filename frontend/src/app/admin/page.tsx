@@ -192,8 +192,8 @@ export default function AdminDashboard() {
 
   if (!adminToken) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", backgroundColor: "var(--bg-primary)" }}>
-        <div style={{ maxWidth: "400px", width: "100%", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "2rem", borderRadius: "10px" }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", backgroundColor: "var(--bg-primary)", padding: "1rem" }}>
+        <div style={{ maxWidth: "400px", width: "100%", backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "2rem 1.5rem", borderRadius: "10px" }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
             <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "54px", objectFit: "contain", borderRadius: "4px" }} />
           </div>
@@ -233,22 +233,23 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "1rem" }}>
+    <div style={{ padding: "1.5rem 1rem", maxWidth: "1200px", margin: "0 auto" }}>
+      <header className="responsive-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <img src="/logo.jpg" alt="AstraNex Defence" style={{ height: "42px", objectFit: "contain", borderRadius: "4px" }} />
           <h1 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Admin Console</h1>
         </div>
 
-        <nav style={{ display: "flex", gap: "0.75rem" }}>
+        <nav style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <button
             onClick={() => setActiveTab("assessments")}
             style={{
-              padding: "0.5rem 1rem",
+              padding: "0.5rem 0.85rem",
               backgroundColor: activeTab === "assessments" ? "var(--accent-blue)" : "transparent",
               border: "1px solid var(--border-color)",
               color: "#fff",
               borderRadius: "6px",
+              fontSize: "0.85rem",
               cursor: "pointer"
             }}
           >
@@ -258,11 +259,12 @@ export default function AdminDashboard() {
           <button
             onClick={() => setActiveTab("csv_upload")}
             style={{
-              padding: "0.5rem 1rem",
+              padding: "0.5rem 0.85rem",
               backgroundColor: activeTab === "csv_upload" ? "var(--accent-blue)" : "transparent",
               border: "1px solid var(--border-color)",
               color: "#fff",
               borderRadius: "6px",
+              fontSize: "0.85rem",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
@@ -276,11 +278,12 @@ export default function AdminDashboard() {
           <button
             onClick={() => setActiveTab("invites")}
             style={{
-              padding: "0.5rem 1rem",
+              padding: "0.5rem 0.85rem",
               backgroundColor: activeTab === "invites" ? "var(--accent-blue)" : "transparent",
               border: "1px solid var(--border-color)",
               color: "#fff",
               borderRadius: "6px",
+              fontSize: "0.85rem",
               cursor: "pointer"
             }}
           >
@@ -290,11 +293,12 @@ export default function AdminDashboard() {
           <button
             onClick={() => setActiveTab("audit")}
             style={{
-              padding: "0.5rem 1rem",
+              padding: "0.5rem 0.85rem",
               backgroundColor: activeTab === "audit" ? "var(--accent-blue)" : "transparent",
               border: "1px solid var(--border-color)",
               color: "#fff",
               borderRadius: "6px",
+              fontSize: "0.85rem",
               cursor: "pointer"
             }}
           >
@@ -304,9 +308,9 @@ export default function AdminDashboard() {
       </header>
 
       {activeTab === "assessments" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
+        <div className="responsive-grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
           {/* Create Assessment */}
-          <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px" }}>
+          <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.25rem", borderRadius: "8px" }}>
             <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>1. Create Assessment</h3>
             <form onSubmit={handleCreateAssessment}>
               <div style={{ marginBottom: "1rem" }}>
@@ -328,15 +332,15 @@ export default function AdminDashboard() {
                   style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
                 />
               </div>
-              <button type="submit" style={{ padding: "0.6rem 1.2rem", backgroundColor: "var(--accent-green)", border: "none", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
+              <button type="submit" style={{ width: "100%", padding: "0.65rem 1.2rem", backgroundColor: "var(--accent-green)", border: "none", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
                 Create Assessment Definition
               </button>
             </form>
-            {createdAsmId && <div style={{ marginTop: "1rem", color: "var(--accent-cyan)", fontSize: "0.85rem" }}>Active Assessment ID: {createdAsmId}</div>}
+            {createdAsmId && <div style={{ marginTop: "1rem", color: "var(--accent-cyan)", fontSize: "0.85rem", wordBreak: "break-all" }}>Active Assessment ID: {createdAsmId}</div>}
           </div>
 
           {/* Add Single Question */}
-          <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px" }}>
+          <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.25rem", borderRadius: "8px" }}>
             <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>2. Add Single Question</h3>
             <form onSubmit={handleAddQuestion}>
               <div style={{ marginBottom: "1rem" }}>
@@ -351,24 +355,24 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
-                <div>
+                <div style={{ flex: 1 }}>
                   <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>TYPE</label>
                   <select
                     value={qType}
                     onChange={e => setQType(e.target.value as any)}
-                    style={{ padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
+                    style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
                   >
                     <option value="MCQ">MCQ</option>
                     <option value="CODING">CODING</option>
                   </select>
                 </div>
-                <div>
+                <div style={{ flex: 1 }}>
                   <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>MARKS</label>
                   <input
                     type="number"
                     value={qMarks}
                     onChange={e => setQMarks(Number(e.target.value))}
-                    style={{ width: "80px", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
+                    style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
                   />
                 </div>
               </div>
@@ -393,7 +397,7 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <button type="submit" style={{ padding: "0.6rem 1.2rem", backgroundColor: "var(--accent-blue)", border: "none", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
+              <button type="submit" style={{ width: "100%", padding: "0.65rem 1.2rem", backgroundColor: "var(--accent-blue)", border: "none", color: "#fff", fontWeight: 600, borderRadius: "4px", cursor: "pointer" }}>
                 Save Question & Answer Key
               </button>
             </form>
@@ -402,16 +406,16 @@ export default function AdminDashboard() {
       )}
 
       {activeTab === "csv_upload" && (
-        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "2rem", borderRadius: "10px", maxWidth: "700px" }}>
+        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "10px", maxWidth: "700px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
             <FileSpreadsheet color="var(--accent-cyan)" size={28} />
             <div>
-              <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Bulk Questions CSV Importer</h3>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Bulk Questions CSV Importer</h3>
               <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Upload CSV files containing DSA, Robotics, or MCQ questions & test cases.</p>
             </div>
           </div>
 
-          <div style={{ backgroundColor: "#090e1a", border: "1px solid var(--border-color)", padding: "1rem", borderRadius: "6px", marginBottom: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+          <div style={{ backgroundColor: "#090e1a", border: "1px solid var(--border-color)", padding: "1rem", borderRadius: "6px", marginBottom: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)", overflowX: "auto" }}>
             <p style={{ fontWeight: 600, color: "#fff", marginBottom: "0.3rem" }}>Expected CSV Header Format:</p>
             <code>type,section,topic,subTopic,tags,questionText,language,testCases,marks,difficulty,timeLimit,memoryLimit</code>
           </div>
@@ -519,7 +523,7 @@ export default function AdminDashboard() {
                 style={{ width: "100%", padding: "0.6rem", backgroundColor: "#060911", border: "1px solid var(--border-color)", color: "#fff", borderRadius: "4px" }}
               />
             </div>
-            <button type="submit" style={{ padding: "0.6rem 1.2rem", backgroundColor: "var(--accent-cyan)", border: "none", color: "#000", fontWeight: 700, borderRadius: "4px", cursor: "pointer" }}>
+            <button type="submit" style={{ width: "100%", padding: "0.65rem 1.2rem", backgroundColor: "var(--accent-cyan)", border: "none", color: "#000", fontWeight: 700, borderRadius: "4px", cursor: "pointer" }}>
               Generate Single-Use Link
             </button>
           </form>
@@ -536,7 +540,7 @@ export default function AdminDashboard() {
       )}
 
       {activeTab === "audit" && (
-        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.5rem", borderRadius: "8px" }}>
+        <div style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-color)", padding: "1.25rem", borderRadius: "8px" }}>
           <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem" }}>System Security Audit Logs</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -552,7 +556,7 @@ export default function AdminDashboard() {
               <tbody>
                 {auditLogs.map(log => (
                   <tr key={log.id} style={{ borderBottom: "1px solid #1a2234" }}>
-                    <td style={{ padding: "0.75rem", fontFamily: "var(--font-mono)" }}>{new Date(log.timestamp).toLocaleString()}</td>
+                    <td style={{ padding: "0.75rem", fontFamily: "var(--font-mono)", whiteSpace: "nowrap" }}>{new Date(log.timestamp).toLocaleString()}</td>
                     <td style={{ padding: "0.75rem", fontWeight: 600, color: "var(--accent-cyan)" }}>{log.event_type}</td>
                     <td style={{ padding: "0.75rem" }}>{log.resource}</td>
                     <td style={{ padding: "0.75rem" }}>{log.actor_id || "Anonymous"}</td>

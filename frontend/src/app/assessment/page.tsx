@@ -280,7 +280,7 @@ export default function AssessmentWorkspace() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       {/* Header */}
-      <header style={{
+      <header className="responsive-header" style={{
         height: "60px",
         backgroundColor: "var(--bg-card)",
         borderBottom: "1px solid var(--border-color)",
@@ -332,9 +332,9 @@ export default function AssessmentWorkspace() {
       </header>
 
       {/* Main Body */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      <div className="responsive-flex-col" style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* Left Navigator Sidebar */}
-        <aside style={{
+        <aside className="responsive-sidebar" style={{
           width: "250px",
           backgroundColor: "#0d1322",
           borderRight: "1px solid var(--border-color)",
