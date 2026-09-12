@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X } from "lucide-react";
+import { parseAssessmentContent } from "@/components/AssessmentDetailsView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
@@ -740,29 +741,47 @@ export default function AssessmentWorkspace() {
             </div>
 
             {/* Custom Rules */}
-            {(session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules"))) && (
-              <div style={{
-                backgroundColor: "rgba(56, 189, 248, 0.08)",
-                border: "1px solid rgba(56, 189, 248, 0.25)",
-                borderRadius: "8px",
-                padding: "1rem",
-                marginBottom: "1.25rem"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem", color: "#38bdf8", fontWeight: 700, fontSize: "0.85rem" }}>
-                  <BookOpen size={16} />
-                  <span>Specific Assessment Rules</span>
-                </div>
+            {(session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules"))) && (() => {
+              const rText = session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules")) || "";
+              const parsed = parseAssessmentContent(undefined, rText);
+              return (
                 <div style={{
-                  fontSize: "0.85rem",
-                  color: "#e2e8f0",
-                  lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "inherit"
+                  backgroundColor: "rgba(56, 189, 248, 0.08)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  borderRadius: "8px",
+                  padding: "1rem",
+                  marginBottom: "1.25rem"
                 }}>
-                  {session?.assessment?.rules || (typeof window !== "undefined" && sessionStorage.getItem("astranex_assessment_rules"))}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.75rem", color: "#38bdf8", fontWeight: 700, fontSize: "0.85rem" }}>
+                    <BookOpen size={16} />
+                    <span>Specific Examination Regulations</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {parsed.rules.map((rule, idx) => (
+                      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem", fontSize: "0.82rem", lineHeight: 1.5, color: "#e2e8f0" }}>
+                        <span style={{
+                          color: "#38bdf8",
+                          fontWeight: 700,
+                          fontSize: "0.72rem",
+                          backgroundColor: "rgba(56, 189, 248, 0.15)",
+                          borderRadius: "50%",
+                          width: "18px",
+                          height: "18px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          marginTop: "2px"
+                        }}>
+                          {idx + 1}
+                        </span>
+                        <span>{rule}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Platform Rules */}
             <div style={{ marginBottom: "1.5rem" }}>

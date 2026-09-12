@@ -24,6 +24,7 @@ import {
   X,
   ShieldAlert
 } from "lucide-react";
+import { AssessmentCardSummary, AssessmentDetailsModal } from "@/components/AssessmentDetailsView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
@@ -609,11 +610,15 @@ export default function CandidatePortalLanding() {
                       <h3 style={{ fontSize: "1.15rem", fontWeight: 700, color: "#ffffff", marginBottom: "0.4rem", lineHeight: 1.3 }}>
                         {asm.title}
                       </h3>
-                      {asm.description && (
-                        <p style={{ fontSize: "0.825rem", color: "#94a3b8", marginBottom: "1.25rem", lineHeight: 1.4 }}>
-                          {asm.description}
-                        </p>
-                      )}
+                      <AssessmentCardSummary
+                        description={asm.description}
+                        rules={asm.rules}
+                        role={asm.role}
+                        duration={asm.duration_minutes}
+                        totalMarks={asm.total_marks}
+                        passingMarks={asm.passing_marks}
+                        onOpenDetails={() => handleOpenRulesModal(asm)}
+                      />
 
                       {/* Key Stats Pill Row */}
                       <div style={{
@@ -673,31 +678,6 @@ export default function CandidatePortalLanding() {
                           <span>Deadline: {formatDate(asm.deadline)}</span>
                         </div>
                       )}
-                    </div>
-
-                    {/* Rules Protocol Trigger */}
-                    <div style={{ marginBottom: "0.85rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenRulesModal(asm)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#38bdf8",
-                          fontSize: "0.78rem",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.4rem",
-                          cursor: "pointer",
-                          padding: 0,
-                          fontWeight: 600
-                        }}
-                      >
-                        <ShieldAlert size={14} />
-                        <span style={{ textDecoration: "underline" }}>
-                          {asm.rules ? "Specific Exam Rules & Protocols" : "Security & Integrity Protocols"}
-                        </span>
-                      </button>
                     </div>
 
                     {/* Action Buttons */}
@@ -823,190 +803,23 @@ export default function CandidatePortalLanding() {
         {/* MODAL: EXAMINATION RULES & INTEGRITY PROTOCOLS     */}
         {/* ================================================== */}
         {rulesModalOpen && selectedAsmForRules && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.85)",
-            backdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "1rem"
-          }}>
-            <div style={{
-              width: "100%",
-              maxWidth: "680px",
-              backgroundColor: "#0d1424",
-              border: "1px solid #1e293b",
-              borderRadius: "12px",
-              padding: "2rem",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 25px 50px rgba(0, 0, 0, 0.85)"
-            }}>
-              {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.25rem", borderBottom: "1px solid #1e293b", paddingBottom: "1rem" }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem" }}>
-                    <ShieldAlert size={20} color="#38bdf8" />
-                    <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#38bdf8" }}>
-                      AstraNex Defence Examination Protocol
-                    </span>
-                  </div>
-                  <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#ffffff", margin: 0 }}>
-                    {selectedAsmForRules.title}
-                  </h2>
-                  <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: "0.25rem 0 0 0" }}>
-                    Domain: {selectedAsmForRules.role} &bull; Duration: {selectedAsmForRules.duration_minutes} Minutes &bull; Pass Mark: {selectedAsmForRules.passing_marks} Pts
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setRulesModalOpen(false)}
-                  style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "0.25rem" }}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Specific Assessment Rules if defined */}
-              {selectedAsmForRules.rules && (
-                <div style={{
-                  backgroundColor: "rgba(56, 189, 248, 0.08)",
-                  border: "1px solid rgba(56, 189, 248, 0.25)",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  marginBottom: "1.25rem"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.5rem", color: "#38bdf8", fontWeight: 700, fontSize: "0.85rem" }}>
-                    <BookOpen size={16} />
-                    <span>Specific Assessment Rules & Instructions</span>
-                  </div>
-                  <div style={{
-                    fontSize: "0.85rem",
-                    color: "#e2e8f0",
-                    lineHeight: 1.6,
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "inherit"
-                  }}>
-                    {selectedAsmForRules.rules}
-                  </div>
-                </div>
-              )}
-
-              {/* Standard Defence Integrity Protocols */}
-              <div style={{ marginBottom: "1.5rem" }}>
-                <h4 style={{ fontSize: "0.85rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#94a3b8", margin: "0 0 0.75rem 0" }}>
-                  Mandatory Platform Integrity Regulations
-                </h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.82rem" }}>
-                  <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
-                    <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.5rem" }}>1.</div>
-                    <div style={{ color: "#cbd5e1" }}>
-                      <strong style={{ color: "#ffffff" }}>Proctored Window Focus:</strong> Fullscreen mode is mandatory. Navigating away, minimizing the browser, or switching windows will automatically log security infractions in the immutable audit trail.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
-                    <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.5rem" }}>2.</div>
-                    <div style={{ color: "#cbd5e1" }}>
-                      <strong style={{ color: "#ffffff" }}>Server-Authoritative Timer:</strong> Countdown clock runs continuously on the secure backend. Closing the browser or losing connection does not freeze the timer.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
-                    <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.5rem" }}>3.</div>
-                    <div style={{ color: "#cbd5e1" }}>
-                      <strong style={{ color: "#ffffff" }}>Isolated Zero-Trust Code Execution:</strong> Code solutions are evaluated in sandboxed containers with strict execution timeouts and no external internet access.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
-                    <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.5rem" }}>4.</div>
-                    <div style={{ color: "#cbd5e1" }}>
-                      <strong style={{ color: "#ffffff" }}>Single-Session Enforcement:</strong> Only one active browser session is permitted. Multiple simultaneous logins under this account will immediately terminate the session.
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.75rem", backgroundColor: "#060911", padding: "0.75rem 1rem", borderRadius: "6px", border: "1px solid #162035" }}>
-                    <div style={{ color: "#38bdf8", fontWeight: 800, minWidth: "1.5rem" }}>5.</div>
-                    <div style={{ color: "#cbd5e1" }}>
-                      <strong style={{ color: "#ffffff" }}>Anti-Plagiarism & AI Restrictions:</strong> Unauthorized clipboard pastes, external scripts, and generative AI aids are strictly forbidden and flagged for evaluator review.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Acknowledgment Checkbox */}
-              <label style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "0.75rem",
-                cursor: "pointer",
-                padding: "0.85rem 1rem",
-                backgroundColor: rulesAgreed ? "rgba(16, 185, 129, 0.1)" : "rgba(30, 41, 59, 0.5)",
-                border: `1px solid ${rulesAgreed ? "#10b981" : "#334155"}`,
-                borderRadius: "8px",
-                marginBottom: "1.5rem",
-                transition: "all 0.2s"
-              }}>
-                <input
-                  type="checkbox"
-                  checked={rulesAgreed}
-                  onChange={(e) => setRulesAgreed(e.target.checked)}
-                  style={{ marginTop: "0.2rem", accentColor: "#10b981", width: "16px", height: "16px", cursor: "pointer" }}
-                />
-                <span style={{ fontSize: "0.85rem", color: rulesAgreed ? "#ffffff" : "#cbd5e1", lineHeight: 1.4 }}>
-                  I confirm that I have read, understood, and agree to strictly comply with all AstraNex Defence examination rules, conduct codes, and integrity protocols.
-                </span>
-              </label>
-
-              {/* Modal Buttons */}
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setRulesModalOpen(false)}
-                  style={{
-                    padding: "0.7rem 1.25rem",
-                    backgroundColor: "transparent",
-                    border: "1px solid #334155",
-                    color: "#94a3b8",
-                    borderRadius: "6px",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!rulesAgreed || Boolean(launchingId)}
-                  onClick={() => {
-                    const target = selectedAsmForRules;
-                    setRulesModalOpen(false);
-                    handleStartAssessment(target);
-                  }}
-                  style={{
-                    padding: "0.7rem 1.5rem",
-                    backgroundColor: rulesAgreed ? "var(--accent-blue)" : "#1e293b",
-                    border: "none",
-                    borderRadius: "6px",
-                    color: rulesAgreed ? "#ffffff" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: "0.9rem",
-                    cursor: rulesAgreed ? "pointer" : "not-allowed",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem"
-                  }}
-                >
-                  <span>{launchingId ? "Initializing Session..." : (selectedAsmForRules.status === "IN_PROGRESS" ? "Proceed to Resume Examination" : "Proceed to Start Examination")}</span>
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
+          <AssessmentDetailsModal
+            isOpen={rulesModalOpen}
+            onClose={() => setRulesModalOpen(false)}
+            title={selectedAsmForRules.title}
+            role={selectedAsmForRules.role}
+            description={selectedAsmForRules.description}
+            rules={selectedAsmForRules.rules}
+            durationMinutes={selectedAsmForRules.duration_minutes}
+            totalMarks={selectedAsmForRules.total_marks}
+            passingMarks={selectedAsmForRules.passing_marks}
+            isCandidateStart={true}
+            onAgreeAndStart={() => {
+              const target = selectedAsmForRules;
+              setRulesModalOpen(false);
+              handleStartAssessment(target);
+            }}
+          />
         )}
       </div>
     );

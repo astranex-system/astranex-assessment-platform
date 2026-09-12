@@ -9,6 +9,7 @@ import {
   Code2, Sparkles, Clock, Check, ExternalLink, ShieldCheck, AlertCircle,
   FileSpreadsheet, UserPlus, UserCheck, UserX, BarChart3, PieChart
 } from "lucide-react";
+import { AssessmentCardSummary, AssessmentDetailsModal } from "@/components/AssessmentDetailsView";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
@@ -1838,9 +1839,15 @@ export default function AdminPortal() {
                       <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: "0 0 0.5rem 0" }}>
                         {asm.title}
                       </h3>
-                      <p style={{ fontSize: "0.8rem", color: "#8b9bb4", margin: "0 0 1rem 0", lineHeight: 1.4 }}>
-                        {asm.description || "Comprehensive technical assessment designed for AstraNex engineering evaluation."}
-                      </p>
+                      <AssessmentCardSummary
+                        description={asm.description}
+                        rules={asm.rules}
+                        role={asm.role}
+                        duration={asm.duration_minutes}
+                        totalMarks={asm.total_marks}
+                        passingMarks={asm.passing_marks}
+                        onOpenDetails={() => setSelectedAssessment(asm)}
+                      />
 
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.25rem", fontSize: "0.8rem" }}>
                         <div style={{ backgroundColor: "#060911", padding: "0.6rem 0.8rem", borderRadius: "6px" }}>
@@ -3690,6 +3697,21 @@ export default function AdminPortal() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Assessment Blueprint & Rules Inspection Modal */}
+      {selectedAssessment && (
+        <AssessmentDetailsModal
+          isOpen={!!selectedAssessment}
+          onClose={() => setSelectedAssessment(null)}
+          title={selectedAssessment.title}
+          role={selectedAssessment.role}
+          description={selectedAssessment.description}
+          rules={selectedAssessment.rules}
+          durationMinutes={selectedAssessment.duration_minutes}
+          totalMarks={selectedAssessment.total_marks}
+          passingMarks={selectedAssessment.passing_marks}
+        />
       )}
 
       {/* ================================================== */}
