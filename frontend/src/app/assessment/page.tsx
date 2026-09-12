@@ -157,15 +157,33 @@ export default function AssessmentWorkspace() {
     }
   };
 
+  const autoSaveAnswer = async (subData: SubmissionState) => {
+    if (!subData || !subData.question_id) return;
+    try {
+      await fetch(`${API_BASE}/api/v1/candidate/submit`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        credentials: "include",
+        body: JSON.stringify(subData)
+      });
+      setSaveMessage("Answer auto-saved");
+      setTimeout(() => setSaveMessage(null), 2500);
+    } catch (e) {
+      console.error("Auto-save error:", e);
+    }
+  };
+
   const handleOptionSelect = (qId: string, optId: string) => {
+    const updated = {
+      ...(submissions[qId] || {}),
+      question_id: qId,
+      selected_option_id: optId
+    };
     setSubmissions(prev => ({
       ...prev,
-      [qId]: {
-        ...prev[qId],
-        question_id: qId,
-        selected_option_id: optId
-      }
+      [qId]: updated
     }));
+    autoSaveAnswer(updated);
   };
 
   const handleCodeChange = (qId: string, code: string, lang: string = "python") => {
@@ -189,6 +207,17 @@ export default function AssessmentWorkspace() {
         text_response: text
       }
     }));
+  };
+
+  const saveAndNavigate = (newIdx: number) => {
+    const currentQ = questions[activeQIndex];
+    if (currentQ && submissions[currentQ.id]) {
+      const currentSub = submissions[currentQ.id];
+      if (currentSub.selected_option_id || currentSub.code_response || currentSub.text_response) {
+        autoSaveAnswer(currentSub);
+      }
+    }
+    setActiveQIndex(newIdx);
   };
 
   const submitSingleAnswer = async (qId: string) => {
@@ -225,6 +254,23 @@ export default function AssessmentWorkspace() {
 
     try {
       setLoading(true);
+      // Flush any pending answers first
+      const subEntries = Object.values(submissions).filter(
+        s => s.selected_option_id || s.code_response || s.text_response
+      );
+      if (subEntries.length > 0) {
+        await Promise.all(
+          subEntries.map(sub =>
+            fetch(`${API_BASE}/api/v1/candidate/submit`, {
+              method: "POST",
+              headers: getAuthHeaders(),
+              credentials: "include",
+              body: JSON.stringify(sub)
+            }).catch(() => {})
+          )
+        );
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/candidate/session/finish`, {
         method: "POST",
         headers: getAuthHeaders(),
@@ -436,7 +482,7 @@ export default function AssessmentWorkspace() {
               return (
                 <button
                   key={q.id}
-                  onClick={() => setActiveQIndex(idx)}
+                  onClick={() => saveAndNavigate(idx)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -586,7 +632,7 @@ export default function AssessmentWorkspace() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "1rem" }}>
                 <button
                   disabled={activeQIndex === 0}
-                  onClick={() => setActiveQIndex(prev => prev - 1)}
+                  onClick={() => saveAndNavigate(activeQIndex - 1)}
                   style={{
                     padding: "0.6rem 1.2rem",
                     backgroundColor: "var(--bg-card)",
@@ -622,7 +668,7 @@ export default function AssessmentWorkspace() {
 
                   <button
                     disabled={activeQIndex === questions.length - 1}
-                    onClick={() => setActiveQIndex(prev => prev + 1)}
+                    onClick={() => saveAndNavigate(activeQIndex + 1)}
                     style={{
                       padding: "0.6rem 1.2rem",
                       backgroundColor: "var(--bg-card)",

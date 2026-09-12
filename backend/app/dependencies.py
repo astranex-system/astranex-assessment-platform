@@ -71,6 +71,8 @@ async def get_current_candidate_session(
 
     if expires_at and now > expires_at:
         session.status = SessionStatus.EXPIRED
+        if not session.finished_at:
+            session.finished_at = expires_at
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

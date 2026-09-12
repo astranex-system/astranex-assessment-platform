@@ -1482,9 +1482,10 @@ async def get_results_list(
         if passed is not None and is_pass != passed:
             continue
 
+        end_time = s.finished_at or s.expires_at
         time_taken = 0
-        if s.finished_at and s.started_at:
-            time_taken = int((s.finished_at - s.started_at).total_seconds())
+        if end_time and s.started_at:
+            time_taken = max(0, int((end_time - s.started_at).total_seconds()))
 
         out.append({
             "session_id": s.id,
@@ -1544,9 +1545,10 @@ async def get_server_calculated_ranking(
         max_marks = sum(q.marks for q in asm.questions) or 100.0
         pct = round((total_score / max_marks * 100), 1) if max_marks > 0 else 0.0
 
+        end_time = s.finished_at or s.expires_at
         time_taken = 0
-        if s.finished_at and s.started_at:
-            time_taken = int((s.finished_at - s.started_at).total_seconds())
+        if end_time and s.started_at:
+            time_taken = max(0, int((end_time - s.started_at).total_seconds()))
 
         # Section scores breakdown
         s_sections: Dict[str, float] = {}
