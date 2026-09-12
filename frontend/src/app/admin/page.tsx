@@ -425,6 +425,27 @@ export default function AdminPortal() {
     }
   };
 
+  const handleResetSession = async (sessionId: string, candidateName: string) => {
+    if (!confirm(`Grant a fresh re-attempt to "${candidateName}"? This will clear their previous attempt so they can retake the assessment.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers: authHeaders
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `Re-attempt granted for ${candidateName}.`);
+        loadResults();
+        loadCandidates();
+        loadDashboardMetrics();
+      } else {
+        showToast(data.detail || "Failed to reset session.", "error");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Error resetting session.", "error");
+    }
+  };
+
   const loadRanking = async (assessmentId: string) => {
     if (!adminToken || !assessmentId) return;
     try {
@@ -2506,6 +2527,23 @@ export default function AdminPortal() {
                                     }}
                                   >
                                     Inspect Result
+                                  </button>
+                                  <button
+                                    onClick={() => handleResetSession(res.session_id, res.candidate_name)}
+                                    style={{
+                                      padding: "0.35rem 0.65rem",
+                                      backgroundColor: "rgba(239, 68, 68, 0.12)",
+                                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                                      color: "#f87171",
+                                      borderRadius: "4px",
+                                      cursor: "pointer",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 600,
+                                      marginLeft: "0.5rem"
+                                    }}
+                                    title="Reset candidate session to grant a fresh re-attempt"
+                                  >
+                                    Grant Re-attempt
                                   </button>
                                 </td>
                               </tr>
