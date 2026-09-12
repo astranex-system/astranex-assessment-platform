@@ -19,7 +19,7 @@ from app.schemas.candidate import (
 )
 from app.dependencies import get_current_candidate_session
 from app.security import (
-    hash_token, create_access_token, generate_csrf_token, verify_csrf_token,
+    hash_token, create_access_token, decode_access_token, generate_csrf_token, verify_csrf_token,
     hash_password, verify_password, SESSION_COOKIE_NAME, CSRF_COOKIE_NAME
 )
 from app.services.scoring import score_submission
