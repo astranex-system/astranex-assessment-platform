@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X } from "lucide-react";
 import { parseAssessmentContent } from "@/components/AssessmentDetailsView";
+import CodingPad from "@/components/CodingPad";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com";
 
@@ -193,16 +194,26 @@ export default function AssessmentWorkspace() {
     autoSaveAnswer(updated);
   };
 
+  const codeSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleCodeChange = (qId: string, code: string, lang: string = "python") => {
+    const updated = {
+      ...(submissions[qId] || {}),
+      question_id: qId,
+      code_response: code,
+      programming_language: lang
+    };
     setSubmissions(prev => ({
       ...prev,
-      [qId]: {
-        ...prev[qId],
-        question_id: qId,
-        code_response: code,
-        programming_language: lang
-      }
+      [qId]: updated
     }));
+
+    if (codeSaveTimeoutRef.current) {
+      clearTimeout(codeSaveTimeoutRef.current);
+    }
+    codeSaveTimeoutRef.current = setTimeout(() => {
+      autoSaveAnswer(updated);
+    }, 1200);
   };
 
   const handleTextChange = (qId: string, text: string) => {
@@ -576,45 +587,13 @@ export default function AssessmentWorkspace() {
               )}
 
               {currentQ.question_type === "CODING" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Source Code Editor</span>
-                    <select
-                      value={currentSub.programming_language || "python"}
-                      onChange={(e) => handleCodeChange(currentQ.id, currentSub.code_response || "", e.target.value)}
-                      style={{
-                        padding: "0.35rem 0.75rem",
-                        backgroundColor: "#090e1a",
-                        border: "1px solid var(--border-color)",
-                        borderRadius: "4px",
-                        color: "#fff",
-                        fontSize: "0.85rem"
-                      }}
-                    >
-                      <option value="python">Python 3</option>
-                      <option value="javascript">JavaScript (Node)</option>
-                      <option value="cpp">C++ 17</option>
-                    </select>
-                  </div>
-
-                  <textarea
-                    value={currentSub.code_response || ""}
-                    onChange={(e) => handleCodeChange(currentQ.id, e.target.value, currentSub.programming_language || "python")}
-                    placeholder="# Write your solution code here..."
-                    style={{
-                      flex: 1,
-                      minHeight: "320px",
-                      width: "100%",
-                      backgroundColor: "#060911",
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "6px",
-                      padding: "1rem",
-                      color: "#38bdf8",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "0.9rem",
-                      outline: "none",
-                      resize: "vertical"
-                    }}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "460px", marginBottom: "1rem" }}>
+                  <CodingPad
+                    questionId={currentQ.id}
+                    code={currentSub.code_response || ""}
+                    language={currentSub.programming_language || "python"}
+                    onCodeChange={(newCode, newLang) => handleCodeChange(currentQ.id, newCode, newLang)}
+                    saveMessage={saveMessage}
                   />
                 </div>
               )}
