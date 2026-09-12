@@ -44,9 +44,12 @@ export default function AssessmentWorkspace() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isFinished, setIsFinished] = useState(false);
+  const isFinishedRef = useRef(false);
   const [finalResult, setFinalResult] = useState<any>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number>(3);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [isSubmittingFinal, setIsSubmittingFinal] = useState(false);
 
   // Full-Screen & Integrity Lockdown States
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -63,6 +66,7 @@ export default function AssessmentWorkspace() {
   // Automatic redirection to main page after submission
   useEffect(() => {
     if (!isFinished) return;
+    isFinishedRef.current = true;
 
     if (typeof document !== "undefined" && document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
@@ -72,7 +76,11 @@ export default function AssessmentWorkspace() {
       setRedirectCountdown(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          window.location.href = "/";
+          if (typeof window !== "undefined") {
+            window.onbeforeunload = null;
+            sessionStorage.setItem("astranex_just_submitted", "true");
+            window.location.href = "/";
+          }
           return 0;
         }
         return prev - 1;
@@ -135,6 +143,7 @@ export default function AssessmentWorkspace() {
     }
 
     const reportSecurityViolation = (reason: "FULLSCREEN_EXIT" | "TAB_SWITCH" | "WINDOW_RESIZED") => {
+      if (isFinishedRef.current) return;
       setFocusLossCount(prev => prev + 1);
       setLockReason(reason);
       setIsSecurityLocked(true);
@@ -158,6 +167,7 @@ export default function AssessmentWorkspace() {
     };
 
     const handleFullscreenChange = () => {
+      if (isFinishedRef.current) return;
       const isFs = checkIsFullscreen();
       setIsFullscreen(isFs);
       if (!isFs) {
@@ -172,6 +182,7 @@ export default function AssessmentWorkspace() {
     };
 
     const handleVisibilityChange = () => {
+      if (isFinishedRef.current) return;
       if (document.hidden) {
         if (hasEnteredFullscreen) {
           reportSecurityViolation("TAB_SWITCH");
@@ -187,12 +198,14 @@ export default function AssessmentWorkspace() {
     };
 
     const handleWindowBlur = () => {
+      if (isFinishedRef.current) return;
       if (hasEnteredFullscreen) {
         reportSecurityViolation("TAB_SWITCH");
       }
     };
 
     const handleWindowResize = () => {
+      if (isFinishedRef.current) return;
       if (!hasEnteredFullscreen) return;
       const isFs = checkIsFullscreen();
       const isWindowSplitOrResized =
@@ -207,6 +220,7 @@ export default function AssessmentWorkspace() {
 
     // Anti-Cheating Keyboard Shortcut Neutralizer
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isFinishedRef.current) return;
       // Prevent F11 manual fullscreen desync
       if (e.key === "F11") {
         e.preventDefault();
@@ -244,12 +258,14 @@ export default function AssessmentWorkspace() {
 
     // Disable Right-Click Context Menu
     const handleContextMenu = (e: MouseEvent) => {
+      if (isFinishedRef.current) return;
       e.preventDefault();
       return false;
     };
 
     // Prevent accidental page reloads
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isFinishedRef.current) return;
       e.preventDefault();
       e.returnValue = "Leaving or reloading this examination may forfeit your session attempt.";
       return e.returnValue;
@@ -472,13 +488,25 @@ export default function AssessmentWorkspace() {
     }
   };
 
-  const handleFinishAssessment = async (autoExpired: boolean = false) => {
-    if (!autoExpired && !confirm("Are you sure you want to finalize and submit your assessment? You cannot modify your answers afterwards.")) {
-      return;
+  const handleFinishAssessment = (autoExpired: boolean = false) => {
+    if (autoExpired) {
+      executeFinalSubmission();
+    } else {
+      setShowSubmitModal(true);
     }
+  };
 
+  const executeFinalSubmission = async () => {
     try {
-      setLoading(true);
+      setIsSubmittingFinal(true);
+      isFinishedRef.current = true;
+      setIsFinished(true);
+      setIsSecurityLocked(false);
+
+      if (typeof window !== "undefined") {
+        window.onbeforeunload = null;
+      }
+
       // Flush any pending answers first
       const subEntries = Object.values(submissions).filter(
         s => s.selected_option_id || s.code_response || s.text_response
@@ -501,21 +529,31 @@ export default function AssessmentWorkspace() {
         headers: getAuthHeaders(),
         credentials: "include"
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || `Server returned error ${res.status} while finishing assessment.`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setFinalResult(data);
+      }
+
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("astranex_just_submitted", "true");
       }
 
       if (typeof document !== "undefined" && document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
+        try {
+          await document.exitFullscreen().catch(() => {});
+        } catch {}
       }
 
-      setFinalResult(data);
-      setIsFinished(true);
+      // Immediate redirect to main dashboard
+      window.location.href = "/";
     } catch (err: any) {
-      setError(err.message || "Failed to submit assessment.");
+      console.error("Failed to submit assessment:", err);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("astranex_just_submitted", "true");
+        window.location.href = "/";
+      }
     } finally {
-      setLoading(false);
+      setIsSubmittingFinal(false);
     }
   };
 
@@ -592,6 +630,11 @@ export default function AssessmentWorkspace() {
             <button
               type="button"
               onClick={() => {
+                isFinishedRef.current = true;
+                if (typeof window !== "undefined") {
+                  window.onbeforeunload = null;
+                  sessionStorage.setItem("astranex_just_submitted", "true");
+                }
                 if (typeof document !== "undefined" && document.fullscreenElement) {
                   document.exitFullscreen().catch(() => {});
                 }
@@ -1228,6 +1271,149 @@ export default function AssessmentWorkspace() {
                 }}
               >
                 Return to Examination
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Assessment Submission Confirmation Modal */}
+      {showSubmitModal && !isFinished && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(3, 7, 18, 0.88)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          zIndex: 99998,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "1.5rem"
+        }}>
+          <div style={{
+            maxWidth: "480px",
+            width: "100%",
+            backgroundColor: "#0b1220",
+            border: "1px solid #1e293b",
+            boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7)",
+            borderRadius: "14px",
+            padding: "2rem",
+            textAlign: "center"
+          }}>
+            <div style={{
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              backgroundColor: "rgba(56, 189, 248, 0.12)",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 1.25rem",
+              color: "#38bdf8"
+            }}>
+              <CheckCircle2 size={30} />
+            </div>
+
+            <h3 style={{ fontSize: "1.3rem", fontWeight: 700, color: "#ffffff", marginBottom: "0.5rem" }}>
+              Submit Technical Assessment?
+            </h3>
+
+            <p style={{ color: "#94a3b8", fontSize: "0.9rem", lineHeight: 1.5, marginBottom: "1.5rem" }}>
+              Are you ready to submit your examination? Once submitted, your answers will be finalized and evaluated, and you will not be able to return to this examination.
+            </p>
+
+            {/* Questions Progress Pill */}
+            <div style={{
+              backgroundColor: "#070b14",
+              border: "1px solid #1e293b",
+              borderRadius: "8px",
+              padding: "0.85rem 1rem",
+              marginBottom: "1.25rem",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "0.85rem"
+            }}>
+              <span style={{ color: "#94a3b8" }}>Answered Questions:</span>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                {questions.filter(q => {
+                  const sub = submissions[q.id];
+                  return sub && (sub.selected_option_id || sub.text_response || sub.code_response);
+                }).length} / {questions.length}
+              </span>
+            </div>
+
+            {questions.length - questions.filter(q => {
+              const sub = submissions[q.id];
+              return sub && (sub.selected_option_id || sub.text_response || sub.code_response);
+            }).length > 0 && (
+              <div style={{
+                backgroundColor: "rgba(245, 158, 11, 0.1)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                borderRadius: "6px",
+                padding: "0.6rem 0.85rem",
+                marginBottom: "1.5rem",
+                fontSize: "0.8rem",
+                color: "#fbbf24",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                textAlign: "left"
+              }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                <span>You have unanswered questions remaining. Unanswered questions will receive 0 marks.</span>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={isSubmittingFinal}
+                onClick={() => setShowSubmitModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "0.75rem 1rem",
+                  backgroundColor: "#1e293b",
+                  border: "1px solid #334155",
+                  borderRadius: "8px",
+                  color: "#e2e8f0",
+                  fontSize: "0.88rem",
+                  fontWeight: 600,
+                  cursor: isSubmittingFinal ? "not-allowed" : "pointer"
+                }}
+              >
+                Return to Exam
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingFinal}
+                onClick={() => executeFinalSubmission()}
+                style={{
+                  flex: 1.3,
+                  padding: "0.75rem 1rem",
+                  backgroundColor: "#ef4444",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#ffffff",
+                  fontSize: "0.88rem",
+                  fontWeight: 700,
+                  cursor: isSubmittingFinal ? "not-allowed" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem"
+                }}
+              >
+                {isSubmittingFinal ? (
+                  <>
+                    <Shield size={16} className="animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Finalize & Submit</span>
+                )}
               </button>
             </div>
           </div>

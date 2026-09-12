@@ -41,6 +41,7 @@ interface AssessmentCard {
   deadline?: string;
   attempts_remaining: number;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "EXPIRED";
+  score?: number | null;
   slot_open?: boolean;
   active_slot_name?: string;
   question_count: number;
@@ -86,6 +87,12 @@ export default function CandidatePortalLanding() {
     const savedEmail = sessionStorage.getItem("astranex_candidate_email");
     const savedName = sessionStorage.getItem("astranex_candidate_name");
     const savedPwd = sessionStorage.getItem("astranex_candidate_pwd");
+    const justSubmitted = sessionStorage.getItem("astranex_just_submitted");
+
+    if (justSubmitted) {
+      setSuccessMsg("Assessment submitted successfully! Your examination responses and score have been recorded.");
+      sessionStorage.removeItem("astranex_just_submitted");
+    }
 
     if (savedEmail) {
       const user: CandidateUser = {
@@ -117,9 +124,13 @@ export default function CandidatePortalLanding() {
     try {
       setLoadingAssessments(true);
       setError(null);
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("astranex_candidate_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const res = await fetch(`${API_BASE}/api/v1/candidate/my-assessments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           email: candEmail.trim().toLowerCase(),
           password: candPwd || undefined
@@ -730,7 +741,10 @@ export default function CandidatePortalLanding() {
                           gap: "0.4rem"
                         }}>
                           <CheckCircle2 size={16} />
-                          <span>Examination Submitted</span>
+                          <span>
+                            Examination Submitted
+                            {asm.score !== undefined && asm.score !== null ? ` • Score: ${asm.score}/${asm.total_marks} pts` : ""}
+                          </span>
                         </div>
                       ) : isExpired ? (
                         <div style={{

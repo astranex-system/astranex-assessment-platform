@@ -81,11 +81,12 @@ from app.schemas.candidate import (
 @router.post("/my-assessments", response_model=List[CandidateAssessmentCardOut])
 async def get_candidate_my_assessments(
     payload: CandidateLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Candidate 'My Assessments' Dashboard API:
-    Authenticates candidate with Email & Password and returns all technical exams assigned to their account,
+    Authenticates candidate with Email & Password or valid candidate Bearer token and returns all technical exams assigned to their account,
     including duration, deadline, attempts, questions count, and status (NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED).
     """
     email_clean = payload.email.strip().lower()
@@ -106,7 +107,18 @@ async def get_candidate_my_assessments(
             detail="No account found with this email. Please click 'Register' to create your candidate account first."
         )
 
-    if candidate.password_hash:
+    # Check for valid Bearer token authentication if password is not provided
+    authenticated_via_token = False
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        token_payload = decode_access_token(token)
+        if token_payload and token_payload.get("role") == "candidate":
+            cand_id_in_tok = token_payload.get("candidate_id") or token_payload.get("sub")
+            if cand_id_in_tok == candidate.id:
+                authenticated_via_token = True
+
+    if candidate.password_hash and not authenticated_via_token:
         if not payload.password:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Password is required for this account.")
         if not verify_password(payload.password, candidate.password_hash):
@@ -119,6 +131,18 @@ async def get_candidate_my_assessments(
     assigned_asms = []
     seen_asm_ids = set()
 
+    # Helper to calculate score for a session
+    async def get_session_score(sess_id: str) -> Optional[float]:
+        from app.models import EvaluationResult, Submission
+        sub_stmt = select(Submission).where(Submission.session_id == sess_id)
+        sub_res = await db.execute(sub_stmt)
+        submissions = sub_res.scalars().all()
+
+        score_stmt = select(EvaluationResult).where(EvaluationResult.session_id == sess_id)
+        score_res = await db.execute(score_stmt)
+        evals = {e.submission_id: e.score_earned for e in score_res.scalars().all() if e.submission_id}
+        return round(sum(evals.get(sub.id, 0.0) for sub in submissions), 2)
+
     # 1. Direct assignments
     for assign in candidate.assignments:
         asm = assign.assessment
@@ -127,10 +151,13 @@ async def get_candidate_my_assessments(
             # Find latest session for this assessment
             cand_sess = [s for s in candidate.sessions if s.assessment_id == asm.id]
             card_status = "NOT_STARTED"
+            cand_score = None
             if cand_sess:
                 latest_s = sorted(cand_sess, key=lambda x: x.started_at, reverse=True)[0]
                 if latest_s.status == SessionStatus.SUBMITTED:
                     card_status = "COMPLETED"
+                    if asm.result_visibility == ResultVisibility.IMMEDIATE:
+                        cand_score = await get_session_score(latest_s.id)
                 elif latest_s.status == SessionStatus.IN_PROGRESS:
                     card_status = "IN_PROGRESS"
                 elif latest_s.status == SessionStatus.EXPIRED:
@@ -150,6 +177,7 @@ async def get_candidate_my_assessments(
                     deadline=assign.deadline or asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
+                    score=cand_score,
                     slot_open=getattr(asm, "slot_open", True) if getattr(asm, "slot_open", True) is not None else True,
                     active_slot_name=getattr(asm, "active_slot_name", "Slot 1") or "Slot 1",
                     question_count=len(asm.questions),
@@ -169,10 +197,13 @@ async def get_candidate_my_assessments(
         for asm in all_res.scalars().all():
             cand_sess = [s for s in candidate.sessions if s.assessment_id == asm.id]
             card_status = "NOT_STARTED"
+            cand_score = None
             if cand_sess:
                 latest_s = sorted(cand_sess, key=lambda x: x.started_at, reverse=True)[0]
                 if latest_s.status == SessionStatus.SUBMITTED:
                     card_status = "COMPLETED"
+                    if asm.result_visibility == ResultVisibility.IMMEDIATE:
+                        cand_score = await get_session_score(latest_s.id)
                 elif latest_s.status == SessionStatus.IN_PROGRESS:
                     card_status = "IN_PROGRESS"
                 elif latest_s.status == SessionStatus.EXPIRED:
@@ -192,6 +223,7 @@ async def get_candidate_my_assessments(
                     deadline=asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
+                    score=cand_score,
                     slot_open=getattr(asm, "slot_open", True) if getattr(asm, "slot_open", True) is not None else True,
                     active_slot_name=getattr(asm, "active_slot_name", "Slot 1") or "Slot 1",
                     question_count=len(asm.questions),
