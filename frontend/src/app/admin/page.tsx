@@ -2283,8 +2283,45 @@ export default function AdminPortal() {
                   <tbody>
                     {liveMonitoringSessions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
-                          No active candidates are currently sitting for examinations.
+                        <td colSpan={8} style={{ padding: "3.5rem 1rem", textAlign: "center" }}>
+                          <div style={{ maxWidth: "480px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
+                            <div style={{
+                              width: "48px",
+                              height: "48px",
+                              borderRadius: "50%",
+                              backgroundColor: "rgba(56, 189, 248, 0.1)",
+                              border: "1px solid rgba(56, 189, 248, 0.2)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#38bdf8",
+                              fontSize: "1.25rem"
+                            }}>
+                              📡
+                            </div>
+                            <div style={{ fontWeight: 700, color: "#ffffff", fontSize: "1rem" }}>
+                              No Live Sessions Currently In Progress
+                            </div>
+                            <div style={{ fontSize: "0.85rem", color: "#8b9bb4", lineHeight: 1.5 }}>
+                              This surveillance feed monitors candidates in real time while they are actively writing the exam. Once a candidate submits or their timer expires, their record moves to the <strong>Candidate Results & Leaderboard</strong> tab.
+                            </div>
+                            <button
+                              onClick={loadLiveMonitoring}
+                              style={{
+                                marginTop: "0.5rem",
+                                padding: "0.4rem 0.9rem",
+                                backgroundColor: "rgba(56, 189, 248, 0.15)",
+                                border: "1px solid #38bdf8",
+                                borderRadius: "6px",
+                                color: "#38bdf8",
+                                fontSize: "0.8rem",
+                                fontWeight: 700,
+                                cursor: "pointer"
+                              }}
+                            >
+                              ↻ Refresh Live Feed
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ) : (

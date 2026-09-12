@@ -40,5 +40,5 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest_asyncio.fixture
 async def async_client() -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with AsyncClient(transport=transport, base_url="https://testserver") as client:
         yield client

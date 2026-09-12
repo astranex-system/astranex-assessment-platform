@@ -75,6 +75,20 @@ async def score_submission(db: AsyncSession, submission: Submission) -> Evaluati
         )
         db.add(eval_result)
 
+    # Clean up any stale evaluation results for previous submissions of the same question in this session
+    from sqlalchemy import delete as sql_delete
+    cleanup_stmt = sql_delete(EvaluationResult).where(
+        EvaluationResult.session_id == submission.session_id,
+        EvaluationResult.submission_id != submission.id,
+        EvaluationResult.submission_id.in_(
+            select(Submission.id).where(
+                Submission.session_id == submission.session_id,
+                Submission.question_id == submission.question_id
+            )
+        )
+    )
+    await db.execute(cleanup_stmt)
+
     await db.commit()
     await db.refresh(eval_result)
     return eval_result

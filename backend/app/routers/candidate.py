@@ -828,10 +828,15 @@ async def finish_assessment_session(
 
     total_score = None
     if asm.result_visibility == ResultVisibility.IMMEDIATE:
-        from app.models import EvaluationResult
-        score_stmt = select(EvaluationResult.score_earned).where(EvaluationResult.session_id == session.id)
+        from app.models import EvaluationResult, Submission
+        sub_stmt = select(Submission).where(Submission.session_id == session.id)
+        sub_res = await db.execute(sub_stmt)
+        submissions = sub_res.scalars().all()
+
+        score_stmt = select(EvaluationResult).where(EvaluationResult.session_id == session.id)
         score_res = await db.execute(score_stmt)
-        total_score = sum(score_res.scalars().all())
+        evals = {e.submission_id: e.score_earned for e in score_res.scalars().all() if e.submission_id}
+        total_score = round(sum(evals.get(sub.id, 0.0) for sub in submissions), 2)
 
     return CandidateFinalResultOut(
         session_id=session.id,

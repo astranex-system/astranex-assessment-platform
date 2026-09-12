@@ -1475,7 +1475,10 @@ async def get_results_list(
 
         max_marks = sum(q.marks for q in asm.questions) or asm.total_marks or 100.0
         pass_marks = asm.passing_marks or 60.0
-        score = sum(r.score_earned for r in s.results)
+
+        # Calculate canonical score strictly from active submissions to prevent duplicate/orphaned evaluation records
+        eval_map = {r.submission_id: r for r in s.results if r.submission_id}
+        score = sum(eval_map[sub.id].score_earned for sub in s.submissions if sub.id in eval_map)
         pct = round((score / max_marks * 100), 1) if max_marks > 0 else 0.0
         is_pass = score >= pass_marks
 
@@ -1539,10 +1542,10 @@ async def get_server_calculated_ranking(
             continue
 
         q_dict = {q.id: q for q in asm.questions}
-        eval_dict = {r.submission_id: r for r in s.results}
+        eval_dict = {r.submission_id: r for r in s.results if r.submission_id}
 
-        total_score = sum(r.score_earned for r in s.results)
-        max_marks = sum(q.marks for q in asm.questions) or 100.0
+        total_score = sum(eval_dict[sub.id].score_earned for sub in s.submissions if sub.id in eval_dict)
+        max_marks = sum(q.marks for q in asm.questions) or asm.total_marks or 100.0
         pct = round((total_score / max_marks * 100), 1) if max_marks > 0 else 0.0
 
         end_time = s.finished_at or s.expires_at
@@ -1983,9 +1986,9 @@ async def get_candidate_session_detail(
     asm_res = await db.execute(asm_stmt)
     asm = asm_res.scalar_one()
 
-    max_possible_score = sum(q.marks for q in asm.questions)
+    max_possible_score = sum(q.marks for q in asm.questions) or asm.total_marks or 100.0
 
-    eval_map = {r.submission_id: r for r in sess.results}
+    eval_map = {r.submission_id: r for r in sess.results if r.submission_id}
     q_map = {q.id: q for q in asm.questions}
 
     sub_details = []
