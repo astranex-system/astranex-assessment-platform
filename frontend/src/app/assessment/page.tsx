@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X, Maximize2, ShieldCheck, EyeOff } from "lucide-react";
+import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X, Maximize2, ShieldCheck, EyeOff, ArrowRight } from "lucide-react";
 import { parseAssessmentContent } from "@/components/AssessmentDetailsView";
 import CodingPad from "@/components/CodingPad";
 
@@ -45,6 +45,7 @@ export default function AssessmentWorkspace() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isFinished, setIsFinished] = useState(false);
   const [finalResult, setFinalResult] = useState<any>(null);
+  const [redirectCountdown, setRedirectCountdown] = useState<number>(3);
   const [showRulesModal, setShowRulesModal] = useState(false);
 
   // Full-Screen & Integrity Lockdown States
@@ -58,6 +59,28 @@ export default function AssessmentWorkspace() {
   useEffect(() => {
     fetchSessionAndQuestions();
   }, []);
+
+  // Automatic redirection to main page after submission
+  useEffect(() => {
+    if (!isFinished) return;
+
+    if (typeof document !== "undefined" && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+
+    const timer = setInterval(() => {
+      setRedirectCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          window.location.href = "/";
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isFinished]);
 
   const getAuthHeaders = () => {
     const token = typeof window !== "undefined" ? sessionStorage.getItem("astranex_candidate_token") : null;
@@ -482,6 +505,11 @@ export default function AssessmentWorkspace() {
       if (!res.ok) {
         throw new Error(data.detail || `Server returned error ${res.status} while finishing assessment.`);
       }
+
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+
       setFinalResult(data);
       setIsFinished(true);
     } catch (err: any) {
@@ -513,59 +541,80 @@ export default function AssessmentWorkspace() {
 
   if (isFinished) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "2rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "2rem", backgroundColor: "#030712" }}>
         <div style={{
           maxWidth: "550px",
           width: "100%",
-          backgroundColor: "var(--bg-card)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "12px",
+          backgroundColor: "#060911",
+          border: "1px solid #1e293b",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+          borderRadius: "14px",
           padding: "2.5rem",
           textAlign: "center"
         }}>
-          <CheckCircle2 size={54} color="var(--accent-green)" style={{ margin: "0 auto 1.5rem" }} />
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>Assessment Complete</h2>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.95rem", marginBottom: "1.5rem" }}>
-            {finalResult?.message || "Your assessment responses have been safely recorded and evaluated on AstraNex servers."}
+          <CheckCircle2 size={56} color="#10b981" style={{ margin: "0 auto 1.5rem" }} />
+          <h2 style={{ fontSize: "1.6rem", fontWeight: 800, marginBottom: "0.5rem", color: "#ffffff" }}>Assessment Submitted</h2>
+          <p style={{ color: "#94a3b8", fontSize: "0.95rem", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+            {finalResult?.message || "Your examination answers have been recorded and evaluated on AstraNex servers."}
           </p>
 
           {finalResult?.total_score !== null && finalResult?.total_score !== undefined && (
             <div style={{
               backgroundColor: "#0d172a",
-              border: "1px solid var(--accent-blue)",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
               padding: "1rem",
               borderRadius: "8px",
               marginBottom: "1.5rem"
             }}>
-              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "block" }}>FINAL SCORE</span>
-              <span style={{ fontSize: "1.8rem", fontWeight: 700, color: "var(--accent-cyan)" }}>{finalResult.total_score} pts</span>
+              <span style={{ fontSize: "0.8rem", color: "#8b9bb4", display: "block", letterSpacing: "0.05em", fontWeight: 700 }}>FINAL SCORE</span>
+              <span style={{ fontSize: "1.9rem", fontWeight: 800, color: "#38bdf8" }}>{finalResult.total_score} pts</span>
             </div>
           )}
 
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
-            Recruiters will be notified automatically. You may close this window safely.
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            backgroundColor: "rgba(56, 189, 248, 0.1)",
+            border: "1px solid rgba(56, 189, 248, 0.25)",
+            padding: "0.6rem 1.2rem",
+            borderRadius: "8px",
+            color: "#38bdf8",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            marginBottom: "1.5rem"
+          }}>
+            <Clock size={16} />
+            <span>Redirecting to main page in {redirectCountdown}s...</span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            style={{
-              marginTop: "1.25rem",
-              padding: "0.75rem 1.5rem",
-              backgroundColor: "var(--accent-blue)",
-              border: "none",
-              borderRadius: "6px",
-              color: "#ffffff",
-              fontWeight: 600,
-              fontSize: "0.9rem",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem"
-            }}
-          >
-            ← Return to Candidate Dashboard
-          </button>
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof document !== "undefined" && document.fullscreenElement) {
+                  document.exitFullscreen().catch(() => {});
+                }
+                window.location.href = "/";
+              }}
+              style={{
+                padding: "0.75rem 1.75rem",
+                backgroundColor: "#2563eb",
+                border: "none",
+                borderRadius: "8px",
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem"
+              }}
+            >
+              <span>Return to Main Page Now</span>
+              <ArrowRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -994,20 +1043,40 @@ export default function AssessmentWorkspace() {
                     <span>{submitting ? "Saving..." : "Save Answer"}</span>
                   </button>
 
-                  <button
-                    disabled={activeQIndex === questions.length - 1}
-                    onClick={() => saveAndNavigate(activeQIndex + 1)}
-                    style={{
-                      padding: "0.6rem 1.2rem",
-                      backgroundColor: "var(--bg-card)",
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      cursor: activeQIndex === questions.length - 1 ? "not-allowed" : "pointer"
-                    }}
-                  >
-                    Next Question
-                  </button>
+                  {activeQIndex === questions.length - 1 ? (
+                    <button
+                      onClick={() => handleFinishAssessment(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.45rem",
+                        padding: "0.6rem 1.35rem",
+                        backgroundColor: "var(--accent-red)",
+                        border: "none",
+                        borderRadius: "6px",
+                        color: "#fff",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>Submit Assessment</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => saveAndNavigate(activeQIndex + 1)}
+                      style={{
+                        padding: "0.6rem 1.2rem",
+                        backgroundColor: "var(--bg-card)",
+                        border: "1px solid var(--border-color)",
+                        borderRadius: "6px",
+                        color: "#fff",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Next Question
+                    </button>
+                  )}
                 </div>
               </div>
             </>
