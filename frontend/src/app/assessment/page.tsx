@@ -161,14 +161,20 @@ export default function AssessmentWorkspace() {
   const autoSaveAnswer = async (subData: SubmissionState) => {
     if (!subData || !subData.question_id) return;
     try {
-      await fetch(`${API_BASE}/api/v1/candidate/submit`, {
+      const res = await fetch(`${API_BASE}/api/v1/candidate/submit`, {
         method: "POST",
         headers: getAuthHeaders(),
         credentials: "include",
         body: JSON.stringify(subData)
       });
-      setSaveMessage("Answer auto-saved");
-      setTimeout(() => setSaveMessage(null), 2500);
+      if (res.ok) {
+        setSaveMessage("Answer auto-saved");
+        setTimeout(() => setSaveMessage(null), 2500);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Auto-save rejected by server:", res.status, errData);
+        setSaveMessage(`Sync error (${res.status})`);
+      }
     } catch (e) {
       console.error("Auto-save error:", e);
     }
@@ -278,6 +284,9 @@ export default function AssessmentWorkspace() {
         credentials: "include"
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || `Server returned error ${res.status} while finishing assessment.`);
+      }
       setFinalResult(data);
       setIsFinished(true);
     } catch (err: any) {

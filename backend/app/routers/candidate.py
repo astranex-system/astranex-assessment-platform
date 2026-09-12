@@ -308,16 +308,16 @@ async def candidate_register(
         key=SESSION_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 3600
     )
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=csrf_token,
         httponly=False,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 3600
     )
 
@@ -479,16 +479,16 @@ async def candidate_login_start(
         key=SESSION_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 3600
     )
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=csrf_token,
         httponly=False,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 3600
     )
 
@@ -610,16 +610,16 @@ async def start_assessment_session(
         key=SESSION_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 600
     )
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
         value=csrf_token,
         httponly=False,
-        samesite="lax",
-        secure=False,
+        samesite="none",
+        secure=True,
         max_age=assessment.duration_minutes * 60 + 600
     )
 

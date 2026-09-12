@@ -55,11 +55,18 @@ def generate_csrf_token() -> str:
 def verify_csrf_token(request: Request):
     """
     Verify CSRF token for state-changing HTTP requests.
-    Validates X-CSRF-Token header against astranex_csrf cookie.
+    If request is authenticated via Bearer token (e.g. from Authorization header stored in client JS),
+    CSRF is inherently mitigated because browsers never attach custom Authorization headers cross-origin.
+    Otherwise, for cookie-authenticated requests, validates X-CSRF-Token header against astranex_csrf cookie.
     """
     if request.method in ["GET", "HEAD", "OPTIONS"]:
         return
-    
+
+    # Requests authenticated via Bearer token are immune to CSRF
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return
+
     header_csrf = request.headers.get(CSRF_HEADER_NAME)
     cookie_csrf = request.cookies.get(CSRF_COOKIE_NAME)
 
@@ -68,3 +75,4 @@ def verify_csrf_token(request: Request):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="CSRF validation failed. Invalid or missing CSRF token."
         )
+
