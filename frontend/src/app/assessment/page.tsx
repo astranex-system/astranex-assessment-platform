@@ -98,7 +98,18 @@ export default function AssessmentWorkspace() {
       if (!shouldContinue) clearInterval(interval);
     }, 1000);
 
-    return () => clearInterval(interval);
+    const handleVisibilityOrFocus = () => {
+      updateCountdown();
+    };
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    };
   }, [session, isFinished]);
 
   const fetchSessionAndQuestions = async () => {
