@@ -156,7 +156,7 @@ export default function AdminPortal() {
     }
   }, [adminToken]);
 
-  // Auto-refresh for Live Monitoring
+  // Auto-refresh for Live Monitoring (Network Poll every 8s)
   useEffect(() => {
     if (!adminToken || !autoRefreshLive || activeTab !== "monitoring") return;
     const interval = setInterval(() => {
@@ -164,6 +164,20 @@ export default function AdminPortal() {
     }, 8000);
     return () => clearInterval(interval);
   }, [adminToken, autoRefreshLive, activeTab]);
+
+  // Real-time 1-second countdown tick for Live Monitoring
+  useEffect(() => {
+    if (!adminToken || activeTab !== "monitoring" || liveMonitoringSessions.length === 0) return;
+    const tick = setInterval(() => {
+      setLiveMonitoringSessions(prev =>
+        prev.map(s => ({
+          ...s,
+          time_remaining_seconds: Math.max(0, (s.time_remaining_seconds || 0) - 1)
+        }))
+      );
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [adminToken, activeTab, liveMonitoringSessions.length]);
 
   // --- API Loaders ---
   const authHeaders = useMemo(() => ({
@@ -2247,8 +2261,13 @@ export default function AdminPortal() {
                       </tr>
                     ) : (
                       liveMonitoringSessions.map((sess) => {
-                        const mins = Math.floor(sess.time_remaining_seconds / 60);
-                        const secs = sess.time_remaining_seconds % 60;
+                        const totalSecs = sess.time_remaining_seconds || 0;
+                        const hrs = Math.floor(totalSecs / 3600);
+                        const mins = Math.floor((totalSecs % 3600) / 60);
+                        const secs = totalSecs % 60;
+                        const formattedTime = hrs > 0
+                          ? `${hrs}:${mins < 10 ? `0${mins}` : mins}:${secs < 10 ? `0${secs}` : secs}`
+                          : `${mins}:${secs < 10 ? `0${secs}` : secs}`;
                         return (
                           <tr key={sess.session_id} style={{ borderBottom: "1px solid #0f172a" }}>
                             <td style={{ padding: "0.85rem 1rem" }}>
@@ -2261,8 +2280,8 @@ export default function AdminPortal() {
                             <td style={{ padding: "0.85rem 1rem", color: "#8b9bb4" }}>
                               {sess.started_at ? new Date(sess.started_at).toLocaleTimeString() : "—"}
                             </td>
-                            <td style={{ padding: "0.85rem 1rem", fontWeight: 700, color: sess.time_remaining_seconds < 300 ? "#ef4444" : "#ffffff", fontFamily: "var(--font-mono, monospace)" }}>
-                              {mins}:{secs < 10 ? `0${secs}` : secs}
+                            <td style={{ padding: "0.85rem 1rem", fontWeight: 700, color: totalSecs < 300 ? "#ef4444" : "#ffffff", fontFamily: "var(--font-mono, monospace)" }}>
+                              {formattedTime}
                             </td>
                             <td style={{ padding: "0.85rem 1rem" }}>
                               <span style={{ color: "#10b981", fontWeight: 700 }}>{sess.answered_count}</span>
