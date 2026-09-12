@@ -69,6 +69,8 @@ class Assessment(Base):
     passing_marks = Column(Float, nullable=False, default=60.0)
     max_attempts = Column(Integer, nullable=False, default=1)
     status = Column(String(50), nullable=False, default="ACTIVE")  # DRAFT, PUBLISHED, ACTIVE, CLOSED, ARCHIVED
+    slot_open = Column(Boolean, default=True, nullable=False)
+    active_slot_name = Column(String(100), default="Slot 1", nullable=True)
     start_window = Column(DateTime(timezone=True), nullable=True)
     end_window = Column(DateTime(timezone=True), nullable=True)
     result_visibility = Column(SQLEnum(ResultVisibility), default=ResultVisibility.NEVER)

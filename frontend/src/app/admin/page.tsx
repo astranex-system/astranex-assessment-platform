@@ -5,7 +5,7 @@ import {
   Shield, Users, BookOpen, HelpCircle, Activity, Award, ShieldAlert,
   FileBarChart, FileText, Settings, Search, Bell, LogOut, Plus, Upload,
   Download, Eye, Trash2, Edit, Copy, CheckCircle2, AlertTriangle, X,
-  ChevronRight, ChevronDown, RefreshCw, Filter, ArrowUpDown, Lock,
+  ChevronRight, ChevronDown, RefreshCw, Filter, ArrowUpDown, Lock, Unlock, Video, Play,
   Code2, Sparkles, Clock, Check, ExternalLink, ShieldCheck, AlertCircle,
   FileSpreadsheet, UserPlus, UserCheck, UserX, BarChart3, PieChart
 } from "lucide-react";
@@ -96,6 +96,9 @@ export default function AdminPortal() {
   // --- Live Monitoring State ---
   const [liveMonitoringSessions, setLiveMonitoringSessions] = useState<any[]>([]);
   const [autoRefreshLive, setAutoRefreshLive] = useState(true);
+  const [slotTargetAsmId, setSlotTargetAsmId] = useState<string>("");
+  const [slotNameInput, setSlotNameInput] = useState<string>("Slot 1");
+  const [isTogglingSlot, setIsTogglingSlot] = useState<boolean>(false);
 
   // --- Results & Ranking State ---
   const [resultsList, setResultsList] = useState<any[]>([]);
@@ -241,12 +244,45 @@ export default function AdminPortal() {
       if (res.ok) {
         const data = await res.json();
         setAssessments(data);
-        if (data.length > 0 && !targetAsmIdForCsv) {
-          setTargetAsmIdForCsv(data[0].id);
+        if (data.length > 0) {
+          if (!targetAsmIdForCsv) setTargetAsmIdForCsv(data[0].id);
+          if (!slotTargetAsmId) setSlotTargetAsmId(data[0].id);
         }
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleToggleSlot = async (assessmentId: string, open: boolean, slotName?: string) => {
+    if (!adminToken) return;
+    try {
+      setIsTogglingSlot(true);
+      const res = await fetch(`${API_BASE}/api/v1/admin/assessments/${assessmentId}/slot-control`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          slot_open: open,
+          slot_name: slotName || undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(
+          open
+            ? `🟢 ${data.active_slot_name || "Slot"} is now LIVE! Candidates on Google Meet can begin.`
+            : `🔒 ${data.active_slot_name || "Slot"} is now LOCKED. No new attempts can start until you open the next slot.`,
+          open ? "success" : "info"
+        );
+        loadAssessments();
+        loadLiveMonitoring();
+      } else {
+        showToast(data.detail || "Failed to update slot status", "error");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Error updating slot", "error");
+    } finally {
+      setIsTogglingSlot(false);
     }
   };
 
@@ -1824,16 +1860,32 @@ export default function AdminPortal() {
                         }}>
                           {asm.role || "Engineering"}
                         </span>
-                        <span style={{
-                          padding: "0.2rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          fontWeight: 800,
-                          backgroundColor: asm.status === "ACTIVE" ? "rgba(16, 185, 129, 0.15)" : (asm.status === "DRAFT" ? "#1e293b" : "rgba(245, 158, 11, 0.15)"),
-                          color: asm.status === "ACTIVE" ? "#10b981" : (asm.status === "DRAFT" ? "#94a3b8" : "#f59e0b")
-                        }}>
-                          {asm.status}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                          <span style={{
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "4px",
+                            fontSize: "0.7rem",
+                            fontWeight: 800,
+                            backgroundColor: (asm.slot_open ?? true) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                            color: (asm.slot_open ?? true) ? "#10b981" : "#f87171",
+                            border: `1px solid ${(asm.slot_open ?? true) ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem"
+                          }}>
+                            {(asm.slot_open ?? true) ? `🟢 ${asm.active_slot_name || "Slot 1"}` : `🔒 ${asm.active_slot_name || "Slot 1"} Locked`}
+                          </span>
+                          <span style={{
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "4px",
+                            fontSize: "0.7rem",
+                            fontWeight: 800,
+                            backgroundColor: asm.status === "ACTIVE" ? "rgba(16, 185, 129, 0.15)" : (asm.status === "DRAFT" ? "#1e293b" : "rgba(245, 158, 11, 0.15)"),
+                            color: asm.status === "ACTIVE" ? "#10b981" : (asm.status === "DRAFT" ? "#94a3b8" : "#f59e0b")
+                          }}>
+                            {asm.status}
+                          </span>
+                        </div>
                       </div>
 
                       <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#ffffff", margin: "0 0 0.5rem 0" }}>
@@ -1964,7 +2016,30 @@ export default function AdminPortal() {
                         </button>
                       </div>
 
-                      <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <button
+                          type="button"
+                          disabled={isTogglingSlot}
+                          onClick={() => handleToggleSlot(asm.id, !(asm.slot_open ?? true), asm.active_slot_name || "Slot 1")}
+                          title={(asm.slot_open ?? true) ? "Lock slot: stop new attempts" : "Open slot: allow candidates to begin"}
+                          style={{
+                            padding: "0.4rem 0.65rem",
+                            backgroundColor: (asm.slot_open ?? true) ? "rgba(239, 68, 68, 0.12)" : "rgba(16, 185, 129, 0.12)",
+                            border: `1px solid ${(asm.slot_open ?? true) ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                            color: (asm.slot_open ?? true) ? "#f87171" : "#10b981",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem"
+                          }}
+                        >
+                          {(asm.slot_open ?? true) ? <Lock size={12} /> : <Unlock size={12} />}
+                          <span>{(asm.slot_open ?? true) ? "Lock Slot" : "Open Slot"}</span>
+                        </button>
+
                         {asm.status !== "ACTIVE" ? (
                           <button
                             onClick={() => handleSetAssessmentStatus(asm.id, "ACTIVE")}
@@ -2264,6 +2339,234 @@ export default function AdminPortal() {
                   </button>
                 </div>
               </div>
+
+              {/* Google Meet Live Invigilation & Slot Master Control */}
+              {(() => {
+                const selectedSlotAsm = assessments.find(a => a.id === slotTargetAsmId) || assessments[0];
+                const isSlotOpen = selectedSlotAsm ? (selectedSlotAsm.slot_open ?? true) : true;
+                const activeSlotName = selectedSlotAsm?.active_slot_name || "Slot 1";
+                const activeLiveCount = liveMonitoringSessions.filter(s => !slotTargetAsmId || s.assessment_id === slotTargetAsmId).length;
+
+                return (
+                  <div style={{
+                    backgroundColor: "#0a0f1d",
+                    border: `1px solid ${isSlotOpen ? "rgba(16, 185, 129, 0.4)" : "rgba(245, 158, 11, 0.4)"}`,
+                    borderRadius: "10px",
+                    padding: "1.25rem 1.5rem",
+                    marginBottom: "1.5rem",
+                    boxShadow: isSlotOpen ? "0 0 20px rgba(16, 185, 129, 0.08)" : "0 0 20px rgba(245, 158, 11, 0.08)"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <div style={{
+                          width: "42px",
+                          height: "42px",
+                          borderRadius: "8px",
+                          backgroundColor: isSlotOpen ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                          border: `1px solid ${isSlotOpen ? "#10b981" : "#f59e0b"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: isSlotOpen ? "#10b981" : "#f59e0b"
+                        }}>
+                          <Video size={22} />
+                        </div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#ffffff" }}>
+                              Google Meet Live Invigilation & Slot Master Control
+                            </h3>
+                            <span style={{
+                              padding: "0.2rem 0.6rem",
+                              borderRadius: "20px",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              letterSpacing: "0.05em",
+                              backgroundColor: isSlotOpen ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)",
+                              border: `1px solid ${isSlotOpen ? "#10b981" : "#ef4444"}`,
+                              color: isSlotOpen ? "#10b981" : "#f87171",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.35rem"
+                            }}>
+                              <span style={{
+                                width: "6px",
+                                height: "6px",
+                                borderRadius: "50%",
+                                backgroundColor: isSlotOpen ? "#10b981" : "#ef4444",
+                                boxShadow: isSlotOpen ? "0 0 8px #10b981" : "none"
+                              }} />
+                              {isSlotOpen ? `LIVE • ${activeSlotName.toUpperCase()} OPEN` : `LOCKED • WAITING FOR INVIGILATOR`}
+                            </span>
+                          </div>
+                          <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.8rem", color: "#8b9bb4" }}>
+                            Control exam access in sync with your Google Meet call. Keep locked until all candidates join the meeting, then unlock to start writing simultaneously. Lock after starting so absent candidates can take a makeup slot later.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Assessment Selector */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.8rem", color: "#64748b", fontWeight: 600 }}>Assessment:</span>
+                        <select
+                          value={slotTargetAsmId || (selectedSlotAsm?.id || "")}
+                          onChange={(e) => {
+                            setSlotTargetAsmId(e.target.value);
+                            const found = assessments.find(a => a.id === e.target.value);
+                            if (found && found.active_slot_name) {
+                              setSlotNameInput(found.active_slot_name);
+                            }
+                          }}
+                          style={{
+                            padding: "0.5rem 0.85rem",
+                            backgroundColor: "#060911",
+                            border: "1px solid #1b2844",
+                            borderRadius: "6px",
+                            color: "#ffffff",
+                            fontSize: "0.85rem",
+                            fontWeight: 600,
+                            outline: "none",
+                            cursor: "pointer",
+                            maxWidth: "240px"
+                          }}
+                        >
+                          {assessments.map(a => (
+                            <option key={a.id} value={a.id}>
+                              {a.title} {a.slot_open ? "🟢" : "🔒"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Slot Configuration & Controls */}
+                    <div style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "1rem",
+                      backgroundColor: "#060911",
+                      border: "1px solid #162035",
+                      borderRadius: "8px",
+                      padding: "1rem"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                        <div>
+                          <label style={{ display: "block", fontSize: "0.7rem", color: "#8b9bb4", marginBottom: "0.25rem", textTransform: "uppercase", fontWeight: 700 }}>
+                            Slot / Cohort Label
+                          </label>
+                          <input
+                            type="text"
+                            value={slotNameInput}
+                            onChange={(e) => setSlotNameInput(e.target.value)}
+                            placeholder="e.g., Slot 1, Slot 2 (Makeup)"
+                            style={{
+                              padding: "0.45rem 0.75rem",
+                              backgroundColor: "#0a0f1d",
+                              border: "1px solid #1b2844",
+                              borderRadius: "6px",
+                              color: "#ffffff",
+                              fontSize: "0.85rem",
+                              fontWeight: 600,
+                              outline: "none",
+                              width: "200px"
+                            }}
+                          />
+                        </div>
+
+                        {/* Quick Slot Selectors */}
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: "0.35rem", height: "100%", paddingTop: "1.1rem" }}>
+                          {["Slot 1", "Slot 2 (Makeup)", "Slot 3"].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setSlotNameInput(preset)}
+                              style={{
+                                padding: "0.35rem 0.6rem",
+                                backgroundColor: slotNameInput === preset ? "rgba(56, 189, 248, 0.2)" : "#0d1526",
+                                border: `1px solid ${slotNameInput === preset ? "#38bdf8" : "#1b2844"}`,
+                                borderRadius: "4px",
+                                color: slotNameInput === preset ? "#38bdf8" : "#8b9bb4",
+                                fontSize: "0.75rem",
+                                cursor: "pointer",
+                                fontWeight: slotNameInput === preset ? 700 : 500
+                              }}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Action Trigger Button */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        {selectedSlotAsm && (
+                          <button
+                            type="button"
+                            disabled={isTogglingSlot}
+                            onClick={() => handleToggleSlot(selectedSlotAsm.id, !isSlotOpen, slotNameInput)}
+                            style={{
+                              padding: "0.65rem 1.4rem",
+                              backgroundColor: isSlotOpen ? "#ef4444" : "#10b981",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "6px",
+                              fontSize: "0.9rem",
+                              fontWeight: 800,
+                              cursor: isTogglingSlot ? "wait" : "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              boxShadow: isSlotOpen ? "0 4px 14px rgba(239, 68, 68, 0.3)" : "0 4px 14px rgba(16, 185, 129, 0.3)",
+                              opacity: isTogglingSlot ? 0.7 : 1,
+                              transition: "all 0.2s ease"
+                            }}
+                          >
+                            {isSlotOpen ? (
+                              <>
+                                <Lock size={16} />
+                                <span>🔒 Lock Slot (Stop New Attempts)</span>
+                              </>
+                            ) : (
+                              <>
+                                <Unlock size={16} />
+                                <span>🚀 Open {slotNameInput || "Slot"} on Google Meet</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Telemetry info row */}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1.5rem",
+                      marginTop: "0.85rem",
+                      paddingTop: "0.75rem",
+                      borderTop: "1px solid #162035",
+                      fontSize: "0.8rem",
+                      color: "#8b9bb4"
+                    }}>
+                      <span>
+                        Currently Writing in Google Meet: <strong style={{ color: "#38bdf8" }}>{activeLiveCount} candidate(s)</strong>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Total Registered/Assigned: <strong style={{ color: "#ffffff" }}>{selectedSlotAsm?.candidate_count || 0}</strong>
+                      </span>
+                      <span>•</span>
+                      <span style={{ color: isSlotOpen ? "#10b981" : "#f59e0b" }}>
+                        {isSlotOpen
+                          ? "✓ Candidates currently on Google Meet can start the assessment immediately."
+                          : "⚠️ Candidates on Google Meet are seeing 'Slot Locked • Waiting for Invigilator' until you click Open."}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Active Monitoring Table */}
               <div style={{ backgroundColor: "#0a0f1d", border: "1px solid #162035", borderRadius: "10px", overflow: "hidden" }}>

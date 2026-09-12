@@ -41,6 +41,8 @@ interface AssessmentCard {
   deadline?: string;
   attempts_remaining: number;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "EXPIRED";
+  slot_open?: boolean;
+  active_slot_name?: string;
   question_count: number;
   rules?: string;
 }
@@ -95,6 +97,20 @@ export default function CandidatePortalLanding() {
       fetchMyAssessments(savedEmail, savedPwd || undefined);
     }
   }, []);
+
+  // Auto-polling for Google Meet slot unlock
+  useEffect(() => {
+    if (!candidate?.email) return;
+
+    const hasLockedSlot = myAssessments.some(a => a.status === "NOT_STARTED" && a.slot_open === false);
+    if (!hasLockedSlot) return;
+
+    const interval = setInterval(() => {
+      fetchMyAssessments(candidate.email, candidatePassword || undefined);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [candidate, myAssessments, candidatePassword]);
 
   // Fetch candidate's assigned examinations
   const fetchMyAssessments = async (candEmail: string, candPwd?: string) => {
@@ -554,6 +570,7 @@ export default function CandidatePortalLanding() {
                 const isInProgress = asm.status === "IN_PROGRESS";
                 const isExpired = asm.status === "EXPIRED";
                 const isLaunching = launchingId === asm.id;
+                const isSlotLocked = asm.slot_open === false;
 
                 let statusBadgeColor = "#38bdf8";
                 let statusBadgeBg = "rgba(56, 189, 248, 0.12)";
@@ -571,6 +588,10 @@ export default function CandidatePortalLanding() {
                   statusBadgeColor = "#ef4444";
                   statusBadgeBg = "rgba(239, 68, 68, 0.15)";
                   statusLabel = "Window Closed";
+                } else if (isSlotLocked) {
+                  statusBadgeColor = "#f59e0b";
+                  statusBadgeBg = "rgba(245, 158, 11, 0.15)";
+                  statusLabel = `Locked (${asm.active_slot_name || "Slot 1"})`;
                 }
 
                 return (
@@ -750,6 +771,54 @@ export default function CandidatePortalLanding() {
                           <Play size={16} />
                           <span>{isLaunching ? "Resuming Session..." : "Resume Examination"}</span>
                         </button>
+                      ) : isSlotLocked ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                          <button
+                            type="button"
+                            disabled={true}
+                            style={{
+                              width: "100%",
+                              padding: "0.85rem",
+                              backgroundColor: "rgba(30, 41, 59, 0.6)",
+                              border: "1px dashed rgba(245, 158, 11, 0.5)",
+                              borderRadius: "6px",
+                              color: "#f59e0b",
+                              fontWeight: 700,
+                              fontSize: "0.85rem",
+                              cursor: "not-allowed",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "0.5rem"
+                            }}
+                          >
+                            <Lock size={15} />
+                            <span>Slot Locked • Waiting for Invigilator</span>
+                          </button>
+                          <div style={{
+                            fontSize: "0.75rem",
+                            color: "#8b9bb4",
+                            textAlign: "center",
+                            lineHeight: 1.4
+                          }}>
+                            Your invigilator will open <strong>{asm.active_slot_name || "this slot"}</strong> during the Google Meet call. This will activate automatically.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => candidate && fetchMyAssessments(candidate.email, candidatePassword || undefined)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#38bdf8",
+                              fontSize: "0.75rem",
+                              cursor: "pointer",
+                              textDecoration: "underline",
+                              padding: "0.2rem"
+                            }}
+                          >
+                            ↻ Check Slot Status Now
+                          </button>
+                        </div>
                       ) : (
                         <button
                           type="button"

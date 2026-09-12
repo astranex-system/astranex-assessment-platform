@@ -53,6 +53,8 @@ class CandidateAssessmentCardOut(BaseModel):
     deadline: Optional[datetime] = None
     attempts_remaining: int = 1
     status: str = "NOT_STARTED"  # NOT_STARTED, IN_PROGRESS, COMPLETED, EXPIRED
+    slot_open: bool = True
+    active_slot_name: Optional[str] = "Slot 1"
     question_count: int = 0
     rules: Optional[str] = None
 

@@ -73,10 +73,16 @@ class AssessmentUpdate(BaseModel):
     passing_marks: Optional[float] = None
     max_attempts: Optional[int] = None
     status: Optional[str] = None
+    slot_open: Optional[bool] = None
+    active_slot_name: Optional[str] = None
     rules: Optional[str] = None
     start_window: Optional[datetime] = None
     end_window: Optional[datetime] = None
     result_visibility: Optional[ResultVisibility] = None
+
+class SlotToggleRequest(BaseModel):
+    slot_open: bool
+    slot_name: Optional[str] = None
 
 # --- Candidate Assignment Schemas ---
 class CandidateAssignRequest(BaseModel):

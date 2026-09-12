@@ -21,7 +21,7 @@ from app.schemas.admin import (
     CandidateListItem, CandidateDetailOut, CSVValidationResponse, CSVValidationRowError, CSVValidationPreviewItem,
     DashboardMetricsOut, QuestionBankItemOut, QuestionAnalyticsItemOut, LiveCandidateMonitorItem,
     IntegrityEventOut, IntegrityActionRequest, ReportSummaryOut, CandidateInviteCreate, CandidateInviteOut,
-    AuditLogOut, CandidateSessionDetailOut, CandidateSubmissionDetailOut
+    AuditLogOut, CandidateSessionDetailOut, CandidateSubmissionDetailOut, SlotToggleRequest
 )
 from app.dependencies import get_current_admin, require_roles
 from app.security import (
@@ -219,6 +219,8 @@ async def list_assessments(
             "passing_marks": asm.passing_marks or 60.0,
             "max_attempts": asm.max_attempts or 1,
             "status": asm.status or "ACTIVE",
+            "slot_open": getattr(asm, "slot_open", True) if getattr(asm, "slot_open", True) is not None else True,
+            "active_slot_name": getattr(asm, "active_slot_name", "Slot 1") or "Slot 1",
             "result_visibility": asm.result_visibility,
             "question_count": len(asm.questions),
             "session_count": session_count,
@@ -244,6 +246,8 @@ async def create_assessment(
         passing_marks=payload.passing_marks,
         max_attempts=payload.max_attempts,
         status=payload.status or "ACTIVE",
+        slot_open=True,
+        active_slot_name="Slot 1",
         rules=payload.rules,
         start_window=payload.start_window,
         end_window=payload.end_window,
@@ -277,6 +281,40 @@ async def update_assessment(
     await db.commit()
     await log_audit_event(db, "UPDATE_ASSESSMENT", f"assessment:{assessment_id}", actor_id=admin.id, actor_role=admin.role.value)
     return {"message": "Assessment updated successfully."}
+
+@router.post("/assessments/{assessment_id}/slot-control")
+async def toggle_assessment_slot(
+    assessment_id: str,
+    payload: SlotToggleRequest,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Opens or locks an examination slot for Google Meet proctored cohorts."""
+    stmt = select(Assessment).where(Assessment.id == assessment_id)
+    res = await db.execute(stmt)
+    asm = res.scalar_one_or_none()
+    if not asm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
+
+    asm.slot_open = payload.slot_open
+    if payload.slot_name and payload.slot_name.strip():
+        asm.active_slot_name = payload.slot_name.strip()
+
+    await db.commit()
+    await log_audit_event(
+        db,
+        "EXAM_SLOT_TOGGLED",
+        f"assessment:{assessment_id}",
+        actor_id=admin.id,
+        actor_role=admin.role.value,
+        metadata={"slot_open": asm.slot_open, "slot_name": asm.active_slot_name}
+    )
+    return {
+        "assessment_id": asm.id,
+        "slot_open": asm.slot_open,
+        "active_slot_name": asm.active_slot_name,
+        "message": f"Assessment slot is now {'OPEN for candidate attempts' if asm.slot_open else 'LOCKED'}"
+    }
 
 @router.post("/assessments/{assessment_id}/duplicate")
 async def duplicate_assessment(

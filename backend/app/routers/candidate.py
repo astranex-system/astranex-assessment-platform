@@ -150,6 +150,8 @@ async def get_candidate_my_assessments(
                     deadline=assign.deadline or asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
+                    slot_open=getattr(asm, "slot_open", True) if getattr(asm, "slot_open", True) is not None else True,
+                    active_slot_name=getattr(asm, "active_slot_name", "Slot 1") or "Slot 1",
                     question_count=len(asm.questions),
                     rules=asm.rules
                 )
@@ -190,6 +192,8 @@ async def get_candidate_my_assessments(
                     deadline=asm.end_window,
                     attempts_remaining=max(0, (asm.max_attempts or 1) - len(cand_sess)),
                     status=card_status,
+                    slot_open=getattr(asm, "slot_open", True) if getattr(asm, "slot_open", True) is not None else True,
+                    active_slot_name=getattr(asm, "active_slot_name", "Slot 1") or "Slot 1",
                     question_count=len(asm.questions),
                     rules=asm.rules
                 )
@@ -434,6 +438,15 @@ async def candidate_login_start(
             )
         # Re-attach and resume active session!
     else:
+        # Verify if slot is open for new candidate attempts
+        is_slot_open = getattr(assessment, "slot_open", True)
+        if is_slot_open is not None and not is_slot_open:
+            slot_name = getattr(assessment, "active_slot_name", "Slot") or "Slot"
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This examination ({slot_name}) is currently locked by the invigilator. Please join your Google Meet session and wait for the invigilator to unlock the slot."
+            )
+
         dummy_tok = secrets.token_urlsafe(32)
         token_obj = AssessmentToken(
             candidate_id=candidate.id,
@@ -572,6 +585,15 @@ async def start_assessment_session(
     session = sess_res.scalar_one_or_none()
 
     if not session:
+        # Verify if slot is open for new candidate attempts
+        is_slot_open = getattr(assessment, "slot_open", True)
+        if is_slot_open is not None and not is_slot_open:
+            slot_name = getattr(assessment, "active_slot_name", "Slot") or "Slot"
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This examination ({slot_name}) is currently locked by the invigilator. Please join your Google Meet session and wait for the invigilator to unlock the slot."
+            )
+
         if tok.used_count >= tok.max_attempts:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
