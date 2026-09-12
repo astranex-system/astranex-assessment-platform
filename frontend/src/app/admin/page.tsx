@@ -41,6 +41,12 @@ export default function AdminPortal() {
   // --- Dashboard Data State ---
   const [dashboardMetrics, setDashboardMetrics] = useState<any>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [loadingAssessments, setLoadingAssessments] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [loadingIntegrity, setLoadingIntegrity] = useState(false);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // --- Candidates State ---
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -160,6 +166,60 @@ export default function AdminPortal() {
     }
   }, [adminToken]);
 
+  // Re-fetch data on active tab switch to ensure current and fresh state
+  useEffect(() => {
+    if (!adminToken) return;
+    if (activeTab === "dashboard") {
+      loadDashboardMetrics();
+      loadAssessments();
+    } else if (activeTab === "candidates") {
+      loadCandidates();
+    } else if (activeTab === "assessments") {
+      loadAssessments();
+    } else if (activeTab === "question-bank") {
+      loadQuestionBank();
+    } else if (activeTab === "monitoring") {
+      loadLiveMonitoring();
+    } else if (activeTab === "results") {
+      loadResults();
+    } else if (activeTab === "integrity") {
+      loadIntegrityEvents();
+    } else if (activeTab === "reports") {
+      loadReport(activeReportType || "assessment");
+    } else if (activeTab === "audit") {
+      loadAuditLogs();
+    } else if (activeTab === "settings") {
+      loadAdminUsers();
+    }
+  }, [activeTab, adminToken]);
+
+  // Reactive filter watchers for Candidates
+  useEffect(() => {
+    if (adminToken && activeTab === "candidates") {
+      loadCandidates();
+    }
+  }, [candidateStatusFilter, candidateAssessmentFilter]);
+
+  // Reactive filter watchers for Question Bank
+  useEffect(() => {
+    if (adminToken && activeTab === "question-bank") {
+      loadQuestionBank();
+    }
+  }, [qSectionFilter, qTypeFilter, qDifficultyFilter]);
+
+  // Reactive filter watchers for Results & Integrity
+  useEffect(() => {
+    if (adminToken && activeTab === "results") {
+      loadResults();
+    }
+  }, [resultsFilterAsm, resultsFilterPassed]);
+
+  useEffect(() => {
+    if (adminToken && activeTab === "integrity") {
+      loadIntegrityEvents();
+    }
+  }, [integrityRiskFilter]);
+
   // Auto-refresh for Live Monitoring (Network Poll every 8s)
   useEffect(() => {
     if (!adminToken || !autoRefreshLive || activeTab !== "monitoring") return;
@@ -215,13 +275,22 @@ export default function AdminPortal() {
     }
   };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = (reason?: string | React.MouseEvent) => {
     sessionStorage.removeItem("astranex_admin_jwt");
     sessionStorage.removeItem("astranex_admin_email");
     sessionStorage.removeItem("astranex_admin_role");
     setAdminToken(null);
     setAdminUser(null);
-    showToast("Logged out of Administrative Session.", "info");
+    const msg = typeof reason === "string" ? reason : "Logged out of Administrative Session.";
+    showToast(msg, typeof reason === "string" ? "error" : "info");
+  };
+
+  const checkAuth = (status: number) => {
+    if (status === 401 || status === 403) {
+      handleAdminLogout("Administrative session expired or unauthorized. Please sign in again.");
+      return false;
+    }
+    return true;
   };
 
   const loadDashboardMetrics = async () => {
@@ -229,6 +298,7 @@ export default function AdminPortal() {
     try {
       setLoadingMetrics(true);
       const res = await fetch(`${API_BASE}/api/v1/admin/dashboard/metrics`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setDashboardMetrics(await res.json());
     } catch (e) {
       console.error(e);
@@ -240,7 +310,9 @@ export default function AdminPortal() {
   const loadAssessments = async () => {
     if (!adminToken) return;
     try {
+      setLoadingAssessments(true);
       const res = await fetch(`${API_BASE}/api/v1/admin/assessments`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) {
         const data = await res.json();
         setAssessments(data);
@@ -251,6 +323,8 @@ export default function AdminPortal() {
       }
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingAssessments(false);
     }
   };
 
@@ -266,6 +340,7 @@ export default function AdminPortal() {
           slot_name: slotName || undefined
         })
       });
+      if (!checkAuth(res.status)) return;
       const data = await res.json();
       if (res.ok) {
         showToast(
@@ -295,6 +370,7 @@ export default function AdminPortal() {
       if (candidateAssessmentFilter !== "ALL") url += `assessment_id=${candidateAssessmentFilter}&`;
       if (candidateSearch.trim()) url += `search=${encodeURIComponent(candidateSearch.trim())}&`;
       const res = await fetch(url, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setCandidates(await res.json());
     } catch (e) {
       console.error(e);
@@ -427,15 +503,19 @@ export default function AdminPortal() {
   const loadQuestionBank = async () => {
     if (!adminToken) return;
     try {
+      setLoadingQuestions(true);
       let url = `${API_BASE}/api/v1/admin/questions/bank?`;
       if (qSectionFilter !== "ALL") url += `section=${encodeURIComponent(qSectionFilter)}&`;
       if (qTypeFilter !== "ALL") url += `question_type=${qTypeFilter}&`;
       if (qDifficultyFilter !== "ALL") url += `difficulty=${qDifficultyFilter}&`;
       if (qSearch.trim()) url += `search=${encodeURIComponent(qSearch.trim())}&`;
       const res = await fetch(url, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setQuestionsBank(await res.json());
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingQuestions(false);
     }
   };
 
@@ -443,6 +523,7 @@ export default function AdminPortal() {
     if (!adminToken) return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/monitoring/live`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setLiveMonitoringSessions(await res.json());
     } catch (e) {
       console.error(e);
@@ -452,13 +533,17 @@ export default function AdminPortal() {
   const loadResults = async () => {
     if (!adminToken) return;
     try {
+      setLoadingResults(true);
       let url = `${API_BASE}/api/v1/admin/results?`;
       if (resultsFilterAsm !== "ALL") url += `assessment_id=${resultsFilterAsm}&`;
       if (resultsFilterPassed !== "ALL") url += `passed=${resultsFilterPassed === "PASSED"}&`;
       const res = await fetch(url, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setResultsList(await res.json());
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -469,6 +554,7 @@ export default function AdminPortal() {
         method: "DELETE",
         headers: authHeaders
       });
+      if (!checkAuth(res.status)) return;
       const data = await res.json();
       if (res.ok) {
         showToast(data.message || `Re-attempt granted for ${candidateName}.`);
@@ -487,6 +573,7 @@ export default function AdminPortal() {
     if (!adminToken || !assessmentId) return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/results/${assessmentId}/ranking`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setRankingData(await res.json());
     } catch (e) {
       console.error(e);
@@ -497,6 +584,7 @@ export default function AdminPortal() {
     if (!adminToken) return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/sessions/${sessionId}`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setInspectSessionDetail(await res.json());
     } catch (e) {
       console.error(e);
@@ -507,6 +595,7 @@ export default function AdminPortal() {
     if (!adminToken) return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/analytics/questions`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setQuestionAnalytics(await res.json());
     } catch (e) {
       console.error(e);
@@ -516,12 +605,16 @@ export default function AdminPortal() {
   const loadIntegrityEvents = async () => {
     if (!adminToken) return;
     try {
+      setLoadingIntegrity(true);
       let url = `${API_BASE}/api/v1/admin/integrity/events?`;
       if (integrityRiskFilter !== "ALL") url += `risk_level=${integrityRiskFilter}&`;
       const res = await fetch(url, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setIntegrityEvents(await res.json());
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingIntegrity(false);
     }
   };
 
@@ -533,6 +626,7 @@ export default function AdminPortal() {
         headers: authHeaders,
         body: JSON.stringify({ action })
       });
+      if (!checkAuth(res.status)) return;
       if (res.ok) {
         showToast(`Incident marked as ${action}.`);
         loadIntegrityEvents();
@@ -546,20 +640,28 @@ export default function AdminPortal() {
   const loadReport = async (reportType: string) => {
     if (!adminToken) return;
     try {
+      setLoadingReports(true);
       const res = await fetch(`${API_BASE}/api/v1/admin/reports/${reportType}`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setReportData(await res.json());
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingReports(false);
     }
   };
 
   const loadAuditLogs = async () => {
     if (!adminToken) return;
     try {
+      setLoadingAudit(true);
       const res = await fetch(`${API_BASE}/api/v1/admin/audit-logs?limit=100`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setAuditLogs(await res.json());
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingAudit(false);
     }
   };
 
@@ -567,6 +669,7 @@ export default function AdminPortal() {
     if (!adminToken || adminUser?.role !== "admin") return;
     try {
       const res = await fetch(`${API_BASE}/api/v1/admin/users`, { headers: authHeaders });
+      if (!checkAuth(res.status)) return;
       if (res.ok) setAdminUsers(await res.json());
     } catch (e) {
       console.error(e);
@@ -1487,6 +1590,26 @@ export default function AdminPortal() {
                 </div>
                 <div style={{ display: "flex", gap: "0.75rem" }}>
                   <button
+                    onClick={loadCandidates}
+                    title="Reload Candidates"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.6rem 0.95rem",
+                      backgroundColor: "#0d1526",
+                      border: "1px solid #1b2844",
+                      borderRadius: "6px",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <RefreshCw size={15} className={loadingCandidates ? "spin" : ""} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
                     onClick={handlePurgeDemoCandidates}
                     title="Purge all demo/test candidate accounts and their session records"
                     style={{
@@ -1651,10 +1774,37 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {candidates.length === 0 ? (
+                    {loadingCandidates ? (
                       <tr>
-                        <td colSpan={10} style={{ padding: "2.5rem", textAlign: "center", color: "#64748b" }}>
-                          No candidates found matching the query.
+                        <td colSpan={10} style={{ padding: "3rem 1rem", textAlign: "center", color: "#38bdf8" }}>
+                          <RefreshCw size={20} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                          <span style={{ fontWeight: 600 }}>Loading registered candidate directory...</span>
+                        </td>
+                      </tr>
+                    ) : candidates.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} style={{ padding: "3rem 1rem", textAlign: "center", color: "#64748b" }}>
+                          <p style={{ margin: "0 0 0.85rem 0", fontSize: "0.95rem" }}>No candidates found matching the query or filter.</p>
+                          <button
+                            onClick={() => {
+                              setCandidateSearch("");
+                              setCandidateStatusFilter("ALL");
+                              setCandidateAssessmentFilter("ALL");
+                              loadCandidates();
+                            }}
+                            style={{
+                              padding: "0.45rem 0.9rem",
+                              backgroundColor: "#1e293b",
+                              border: "1px solid #334155",
+                              borderRadius: "6px",
+                              color: "#38bdf8",
+                              fontSize: "0.8rem",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Reset Filters & Reload Directory
+                          </button>
                         </td>
                       </tr>
                     ) : (
@@ -1803,42 +1953,89 @@ export default function AdminPortal() {
                     Manage engineering assessment specifications, passing marks, and candidate access assignments.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setEditingAssessmentId(null);
-                    setAsmTitle("");
-                    setAsmRole("Software Engineering");
-                    setAsmDesc("");
-                    setAsmRules("");
-                    setAsmDuration(60);
-                    setAsmTotalMarks(100);
-                    setAsmPassingMarks(60);
-                    setAsmMaxAttempts(1);
-                    setAsmResultVisibility("NEVER");
-                    setAssessmentModalOpen(true);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.6rem 1.1rem",
-                    backgroundColor: "#2563eb",
-                    border: "none",
-                    borderRadius: "6px",
-                    color: "#ffffff",
-                    fontSize: "0.85rem",
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  <Plus size={16} />
-                  <span>Create Assessment</span>
-                </button>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    onClick={loadAssessments}
+                    title="Reload Assessments"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.6rem 0.95rem",
+                      backgroundColor: "#0d1526",
+                      border: "1px solid #1b2844",
+                      borderRadius: "6px",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <RefreshCw size={15} className={loadingAssessments ? "spin" : ""} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setEditingAssessmentId(null);
+                      setAsmTitle("");
+                      setAsmRole("Software Engineering");
+                      setAsmDesc("");
+                      setAsmRules("");
+                      setAsmDuration(60);
+                      setAsmTotalMarks(100);
+                      setAsmPassingMarks(60);
+                      setAsmMaxAttempts(1);
+                      setAsmResultVisibility("NEVER");
+                      setAssessmentModalOpen(true);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.6rem 1.1rem",
+                      backgroundColor: "#2563eb",
+                      border: "none",
+                      borderRadius: "6px",
+                      color: "#ffffff",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span>Create Assessment</span>
+                  </button>
+                </div>
               </div>
 
               {/* Assessments Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "1.25rem" }}>
-                {assessments.map((asm) => (
+              {loadingAssessments ? (
+                <div style={{ backgroundColor: "#0a0f1d", border: "1px solid #162035", borderRadius: "10px", padding: "3rem 1rem", textAlign: "center", color: "#38bdf8" }}>
+                  <RefreshCw size={24} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                  <span style={{ fontWeight: 600 }}>Loading technical assessments repository...</span>
+                </div>
+              ) : assessments.length === 0 ? (
+                <div style={{ backgroundColor: "#0a0f1d", border: "1px solid #162035", borderRadius: "10px", padding: "3rem 1rem", textAlign: "center", color: "#64748b" }}>
+                  <p style={{ margin: "0 0 1rem 0", fontSize: "1rem" }}>No technical assessments found.</p>
+                  <button
+                    onClick={loadAssessments}
+                    style={{
+                      padding: "0.5rem 1rem",
+                      backgroundColor: "#1e293b",
+                      border: "1px solid #334155",
+                      borderRadius: "6px",
+                      color: "#38bdf8",
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Reload Assessments
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "1.25rem" }}>
+                  {assessments.map((asm) => (
                   <div key={asm.id} style={{
                     backgroundColor: "#0a0f1d",
                     border: "1px solid #162035",
@@ -2078,6 +2275,7 @@ export default function AdminPortal() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
           )}
 
@@ -2095,28 +2293,50 @@ export default function AdminPortal() {
                     Predefined CSV-first question repository. Secret server-side answer keys are strictly isolated.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setCsvWizardOpen(true);
-                    setCsvStep(1);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.6rem 1.1rem",
-                    backgroundColor: "#2563eb",
-                    border: "none",
-                    borderRadius: "6px",
-                    color: "#ffffff",
-                    fontSize: "0.85rem",
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  <Upload size={16} />
-                  <span>Upload Questions CSV</span>
-                </button>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    onClick={loadQuestionBank}
+                    title="Reload Questions"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.6rem 0.95rem",
+                      backgroundColor: "#0d1526",
+                      border: "1px solid #1b2844",
+                      borderRadius: "6px",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <RefreshCw size={15} className={loadingQuestions ? "spin" : ""} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCsvWizardOpen(true);
+                      setCsvStep(1);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.6rem 1.1rem",
+                      backgroundColor: "#2563eb",
+                      border: "none",
+                      borderRadius: "6px",
+                      color: "#ffffff",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <Upload size={16} />
+                    <span>Upload Questions CSV</span>
+                  </button>
+                </div>
               </div>
 
               {/* Filters */}
@@ -2205,10 +2425,38 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {questionsBank.length === 0 ? (
+                    {loadingQuestions ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: "2.5rem", textAlign: "center", color: "#64748b" }}>
-                          No questions found in bank. Use 'Upload Questions CSV' to import questions.
+                        <td colSpan={8} style={{ padding: "3rem 1rem", textAlign: "center", color: "#38bdf8" }}>
+                          <RefreshCw size={20} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                          <span style={{ fontWeight: 600 }}>Loading technical question bank...</span>
+                        </td>
+                      </tr>
+                    ) : questionsBank.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ padding: "3rem 1rem", textAlign: "center", color: "#64748b" }}>
+                          <p style={{ margin: "0 0 0.85rem 0", fontSize: "0.95rem" }}>No questions found in bank matching filter.</p>
+                          <button
+                            onClick={() => {
+                              setQSearch("");
+                              setQSectionFilter("ALL");
+                              setQTypeFilter("ALL");
+                              setQDifficultyFilter("ALL");
+                              loadQuestionBank();
+                            }}
+                            style={{
+                              padding: "0.45rem 0.9rem",
+                              backgroundColor: "#1e293b",
+                              border: "1px solid #334155",
+                              borderRadius: "6px",
+                              color: "#38bdf8",
+                              fontSize: "0.8rem",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Reset Filters & Reload Bank
+                          </button>
                         </td>
                       </tr>
                     ) : (
@@ -3004,12 +3252,29 @@ export default function AdminPortal() {
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    onClick={loadIntegrityEvents}
+                    title="Reload Integrity Events"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.5rem 0.95rem",
+                      backgroundColor: "#0d1526",
+                      border: "1px solid #1b2844",
+                      borderRadius: "6px",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <RefreshCw size={14} className={loadingIntegrity ? "spin" : ""} />
+                    <span>Refresh</span>
+                  </button>
+
                   <select
                     value={integrityRiskFilter}
-                    onChange={(e) => {
-                      setIntegrityRiskFilter(e.target.value);
-                      setTimeout(loadIntegrityEvents, 50);
-                    }}
+                    onChange={(e) => setIntegrityRiskFilter(e.target.value)}
                     style={{ padding: "0.5rem 1rem", backgroundColor: "#0a0f1d", border: "1px solid #162035", borderRadius: "6px", color: "#ffffff", fontSize: "0.85rem" }}
                   >
                     <option value="ALL">All Risk Levels</option>
@@ -3035,7 +3300,14 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {integrityEvents.length === 0 ? (
+                    {loadingIntegrity ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "3rem", textAlign: "center", color: "#38bdf8" }}>
+                          <RefreshCw size={20} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                          <span style={{ fontWeight: 600 }}>Loading proctoring integrity telemetry...</span>
+                        </td>
+                      </tr>
+                    ) : integrityEvents.length === 0 ? (
                       <tr>
                         <td colSpan={7} style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
                           No integrity risk incidents flagged across ongoing or completed sessions.
@@ -3147,25 +3419,47 @@ export default function AdminPortal() {
                     Generate structured engineering reports with direct CSV and print export.
                   </p>
                 </div>
-                <button
-                  onClick={downloadReportCsv}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.6rem 1.1rem",
-                    backgroundColor: "#10b981",
-                    border: "none",
-                    borderRadius: "6px",
-                    color: "#ffffff",
-                    fontSize: "0.85rem",
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  <Download size={16} />
-                  <span>Download Report CSV</span>
-                </button>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    onClick={() => loadReport(activeReportType || "assessment")}
+                    title="Reload Report"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.6rem 0.95rem",
+                      backgroundColor: "#0d1526",
+                      border: "1px solid #1b2844",
+                      borderRadius: "6px",
+                      color: "#94a3b8",
+                      fontSize: "0.85rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <RefreshCw size={14} className={loadingReports ? "spin" : ""} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
+                    onClick={downloadReportCsv}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.6rem 1.1rem",
+                      backgroundColor: "#10b981",
+                      border: "none",
+                      borderRadius: "6px",
+                      color: "#ffffff",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <Download size={16} />
+                    <span>Download Report CSV</span>
+                  </button>
+                </div>
               </div>
 
               {/* Report Category Selectors */}
@@ -3217,10 +3511,17 @@ export default function AdminPortal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(!reportData || !reportData.data || reportData.data.length === 0) ? (
+                      {loadingReports ? (
                         <tr>
-                          <td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "#64748b" }}>
-                            Select a report above to generate.
+                          <td colSpan={10} style={{ padding: "3rem", textAlign: "center", color: "#38bdf8" }}>
+                            <RefreshCw size={20} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                            <span style={{ fontWeight: 600 }}>Compiling analytical report...</span>
+                          </td>
+                        </tr>
+                      ) : (!reportData || !reportData.data || reportData.data.length === 0) ? (
+                        <tr>
+                          <td colSpan={10} style={{ padding: "2.5rem", textAlign: "center", color: "#64748b" }}>
+                            No report records available. Select a category or click Refresh.
                           </td>
                         </tr>
                       ) : (
@@ -3246,13 +3547,34 @@ export default function AdminPortal() {
           {/* ================================================== */}
           {activeTab === "audit" && (
             <div>
-              <div style={{ marginBottom: "1.5rem" }}>
-                <h2 style={{ fontSize: "1.4rem", fontWeight: 800, margin: "0 0 0.25rem 0", color: "#ffffff" }}>
-                  System Audit Logs
-                </h2>
-                <p style={{ fontSize: "0.85rem", color: "#8b9bb4", margin: 0 }}>
-                  Immutable security audit trail recording sensitive administrator actions, question imports, and candidate status updates.
-                </p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                <div>
+                  <h2 style={{ fontSize: "1.4rem", fontWeight: 800, margin: "0 0 0.25rem 0", color: "#ffffff" }}>
+                    System Audit Logs
+                  </h2>
+                  <p style={{ fontSize: "0.85rem", color: "#8b9bb4", margin: 0 }}>
+                    Immutable security audit trail recording sensitive administrator actions, question imports, and candidate status updates.
+                  </p>
+                </div>
+                <button
+                  onClick={loadAuditLogs}
+                  title="Reload Audit Logs"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.45rem",
+                    padding: "0.55rem 0.95rem",
+                    backgroundColor: "#0d1526",
+                    border: "1px solid #1b2844",
+                    borderRadius: "6px",
+                    color: "#94a3b8",
+                    fontSize: "0.85rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  <RefreshCw size={14} className={loadingAudit ? "spin" : ""} />
+                  <span>Refresh</span>
+                </button>
               </div>
 
               <div style={{ backgroundColor: "#0a0f1d", border: "1px solid #162035", borderRadius: "10px", overflow: "hidden" }}>
@@ -3268,7 +3590,14 @@ export default function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {auditLogs.length === 0 ? (
+                    {loadingAudit ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: "3rem", textAlign: "center", color: "#38bdf8" }}>
+                          <RefreshCw size={20} className="spin" style={{ display: "inline-block", marginRight: "0.6rem", verticalAlign: "middle" }} />
+                          <span style={{ fontWeight: 600 }}>Loading system audit log trail...</span>
+                        </td>
+                      </tr>
+                    ) : auditLogs.length === 0 ? (
                       <tr>
                         <td colSpan={6} style={{ padding: "2.5rem", textAlign: "center", color: "#64748b" }}>
                           No audit entries recorded.

@@ -47,11 +47,20 @@ connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
+engine_kwargs: dict = {
+    "echo": False,
+    "future": True,
+    "connect_args": connect_args,
+    "pool_pre_ping": True,
+}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["pool_recycle"] = 300
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,
-    future=True,
-    connect_args=connect_args
+    **engine_kwargs
 )
 
 AsyncSessionLocal = async_sessionmaker(
