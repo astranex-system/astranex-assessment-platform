@@ -273,6 +273,16 @@ export default function CandidatePortalLanding() {
         sessionStorage.removeItem("astranex_assessment_rules");
       }
 
+      // Request fullscreen inside user gesture
+      try {
+        const docEl = document.documentElement as any;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen().catch(() => {});
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen().catch(() => {});
+        }
+      } catch (_) {}
+
       router.push("/assessment");
     } catch (err: any) {
       setError(err.message || "Could not launch examination.");

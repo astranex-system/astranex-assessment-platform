@@ -854,6 +854,23 @@ async def record_focus_loss(
     db: AsyncSession = Depends(get_db)
 ):
     """Telemetry endpoint for focus loss tracking without blocking client UI."""
-    session.focus_loss_count += 1
+    session.focus_loss_count = (session.focus_loss_count or 0) + 1
+    
+    # Also log to integrity events if available
+    try:
+        from app.models import IntegrityEvent
+        risk = "HIGH" if session.focus_loss_count >= 5 else ("MEDIUM" if session.focus_loss_count >= 2 else "LOW")
+        event = IntegrityEvent(
+            candidate_id=session.candidate_id,
+            assessment_id=session.assessment_id,
+            session_id=session.id,
+            event_type=payload.reason or "FOCUS_LOSS",
+            risk_level=risk,
+            details={"reason": payload.reason or "WINDOW_BLUR_OR_TAB_SWITCH", "count": session.focus_loss_count}
+        )
+        db.add(event)
+    except Exception as e:
+        logger.warning(f"Could not record integrity event: {e}")
+
     await db.commit()
-    return {"status": "recorded"}
+    return {"status": "recorded", "focus_loss_count": session.focus_loss_count}

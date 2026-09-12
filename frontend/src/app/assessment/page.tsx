@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X } from "lucide-react";
+import { Shield, Clock, AlertTriangle, Check, Play, Save, CheckCircle2, Lock, FileCode, Radio, BookOpen, ShieldAlert, X, Maximize2, ShieldCheck, EyeOff } from "lucide-react";
 import { parseAssessmentContent } from "@/components/AssessmentDetailsView";
 import CodingPad from "@/components/CodingPad";
 
@@ -47,6 +47,13 @@ export default function AssessmentWorkspace() {
   const [finalResult, setFinalResult] = useState<any>(null);
   const [showRulesModal, setShowRulesModal] = useState(false);
 
+  // Full-Screen & Integrity Lockdown States
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [hasEnteredFullscreen, setHasEnteredFullscreen] = useState(false);
+  const [isSecurityLocked, setIsSecurityLocked] = useState(false);
+  const [lockReason, setLockReason] = useState<"FULLSCREEN_EXIT" | "TAB_SWITCH" | "WINDOW_RESIZED">("FULLSCREEN_EXIT");
+  const [focusLossCount, setFocusLossCount] = useState(0);
+
   // Load session & questions
   useEffect(() => {
     fetchSessionAndQuestions();
@@ -61,20 +68,194 @@ export default function AssessmentWorkspace() {
     return headers;
   };
 
-  // Telemetry: Focus loss tracker
+  const checkIsFullscreen = () => {
+    if (typeof document === "undefined") return false;
+    const fsEl =
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement;
+    return Boolean(fsEl);
+  };
+
+  const requestFullScreenMode = async () => {
+    try {
+      const docEl = document.documentElement as any;
+      if (docEl.requestFullscreen) {
+        await docEl.requestFullscreen();
+      } else if (docEl.webkitRequestFullscreen) {
+        await docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        await docEl.mozRequestFullScreen();
+      } else if (docEl.msRequestFullscreen) {
+        await docEl.msRequestFullscreen();
+      }
+      setIsFullscreen(true);
+      setHasEnteredFullscreen(true);
+      setIsSecurityLocked(false);
+    } catch (err) {
+      console.warn("Fullscreen request rejected:", err);
+      // Still permit access if browser explicitly blocks fullscreen API
+      setHasEnteredFullscreen(true);
+      setIsSecurityLocked(false);
+    }
+  };
+
+  // Full-Screen, Window Resize, and Tab Switch Surveillance Guard
   useEffect(() => {
-    const handleBlur = () => {
+    if (isFinished || loading) return;
+
+    // Detect if already in fullscreen (e.g. initiated from landing page)
+    if (checkIsFullscreen()) {
+      setIsFullscreen(true);
+      setHasEnteredFullscreen(true);
+    }
+
+    const reportSecurityViolation = (reason: "FULLSCREEN_EXIT" | "TAB_SWITCH" | "WINDOW_RESIZED") => {
+      setFocusLossCount(prev => prev + 1);
+      setLockReason(reason);
+      setIsSecurityLocked(true);
+
       fetch(`${API_BASE}/api/v1/candidate/telemetry/focus`, {
         method: "POST",
         headers: getAuthHeaders(),
         credentials: "include",
-        body: JSON.stringify({ timestamp: new Date().toISOString() })
+        body: JSON.stringify({
+          timestamp: new Date().toISOString(),
+          reason: reason
+        })
+      }).then(async (res) => {
+        if (res.ok) {
+          const d = await res.json().catch(() => ({}));
+          if (typeof d.focus_loss_count === "number") {
+            setFocusLossCount(d.focus_loss_count);
+          }
+        }
       }).catch(() => {});
     };
 
-    window.addEventListener("blur", handleBlur);
-    return () => window.removeEventListener("blur", handleBlur);
-  }, []);
+    const handleFullscreenChange = () => {
+      const isFs = checkIsFullscreen();
+      setIsFullscreen(isFs);
+      if (!isFs) {
+        if (hasEnteredFullscreen) {
+          reportSecurityViolation("FULLSCREEN_EXIT");
+        }
+      } else {
+        if (!document.hidden) {
+          setIsSecurityLocked(false);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (hasEnteredFullscreen) {
+          reportSecurityViolation("TAB_SWITCH");
+        }
+      } else {
+        if (checkIsFullscreen()) {
+          setIsSecurityLocked(false);
+        } else if (hasEnteredFullscreen) {
+          setIsSecurityLocked(true);
+          setLockReason("FULLSCREEN_EXIT");
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (hasEnteredFullscreen) {
+        reportSecurityViolation("TAB_SWITCH");
+      }
+    };
+
+    const handleWindowResize = () => {
+      if (!hasEnteredFullscreen) return;
+      const isFs = checkIsFullscreen();
+      const isWindowSplitOrResized =
+        typeof window !== "undefined" &&
+        typeof screen !== "undefined" &&
+        (window.innerWidth < screen.availWidth * 0.85 || window.innerHeight < screen.availHeight * 0.8);
+
+      if (!isFs || isWindowSplitOrResized) {
+        reportSecurityViolation("WINDOW_RESIZED");
+      }
+    };
+
+    // Anti-Cheating Keyboard Shortcut Neutralizer
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent F11 manual fullscreen desync
+      if (e.key === "F11") {
+        e.preventDefault();
+        return false;
+      }
+      // Block DevTools: F12, Ctrl+Shift+I, Cmd+Option+I, Ctrl+Shift+J, Cmd+Option+J, Ctrl+Shift+C, Cmd+Option+C
+      if (
+        e.key === "F12" ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && ["i", "I", "j", "J", "c", "C"].includes(e.key))
+      ) {
+        e.preventDefault();
+        return false;
+      }
+      // Block Ctrl+U / Cmd+U (View Source)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U")) {
+        e.preventDefault();
+        return false;
+      }
+      // Block Ctrl+P / Cmd+P (Print)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        return false;
+      }
+      // Block Ctrl+S / Cmd+S (Save Page)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        return false;
+      }
+      // Block Ctrl+T, Ctrl+N, Ctrl+W (New Tab, New Window, Close Tab)
+      if ((e.ctrlKey || e.metaKey) && ["t", "T", "n", "N", "w", "W"].includes(e.key)) {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    // Disable Right-Click Context Menu
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      return false;
+    };
+
+    // Prevent accidental page reloads
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "Leaving or reloading this examination may forfeit your session attempt.";
+      return e.returnValue;
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("resize", handleWindowResize);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("contextmenu", handleContextMenu);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("resize", handleWindowResize);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("contextmenu", handleContextMenu);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasEnteredFullscreen, isFinished, loading]);
 
   // Countdown timer based strictly on server expires_at
   useEffect(() => {
@@ -133,6 +314,9 @@ export default function AssessmentWorkspace() {
 
       setSession(sessData);
       setQuestions(qData);
+      if (typeof sessData.focus_loss_count === "number") {
+        setFocusLossCount(sessData.focus_loss_count);
+      }
 
       // Populate existing draft submissions
       const subMap: Record<string, SubmissionState> = {};
@@ -387,11 +571,137 @@ export default function AssessmentWorkspace() {
     );
   }
 
+  if (!hasEnteredFullscreen && !isFinished) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        backgroundColor: "#030712",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+        color: "#ffffff"
+      }}>
+        <div style={{
+          maxWidth: "600px",
+          width: "100%",
+          backgroundColor: "#060911",
+          border: "1px solid #1e293b",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+          borderRadius: "14px",
+          padding: "2.5rem 2rem",
+          textAlign: "center"
+        }}>
+          <div style={{
+            width: "68px",
+            height: "68px",
+            borderRadius: "50%",
+            backgroundColor: "rgba(56, 189, 248, 0.12)",
+            border: "1px solid rgba(56, 189, 248, 0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 1.5rem",
+            color: "#38bdf8"
+          }}>
+            <ShieldAlert size={36} />
+          </div>
+
+          <span style={{
+            display: "inline-block",
+            padding: "0.25rem 0.75rem",
+            backgroundColor: "rgba(56, 189, 248, 0.1)",
+            border: "1px solid rgba(56, 189, 248, 0.25)",
+            borderRadius: "9999px",
+            fontSize: "0.75rem",
+            fontWeight: 800,
+            color: "#38bdf8",
+            letterSpacing: "0.08em",
+            marginBottom: "1rem"
+          }}>
+            ASTRANEX DEFENCE SECURITY PROTOCOL
+          </span>
+
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#ffffff", marginBottom: "0.5rem" }}>
+            Mandatory Full-Screen Lock
+          </h1>
+          <p style={{ fontSize: "0.9rem", color: "#8b9bb4", lineHeight: 1.6, marginBottom: "1.75rem" }}>
+            This technical examination is conducted inside a restricted, invigilated environment. To ensure assessment integrity, full-screen mode is enforced throughout.
+          </p>
+
+          <div style={{
+            backgroundColor: "#0b1220",
+            border: "1px solid #1e293b",
+            borderRadius: "10px",
+            padding: "1.25rem",
+            textAlign: "left",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.85rem",
+            marginBottom: "2rem",
+            fontSize: "0.85rem",
+            color: "#cbd5e1"
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem" }}>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>•</span>
+              <div><strong>Full-Screen Lock:</strong> The exam will occupy 100% of your screen. Exiting full-screen pauses the test immediately.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem" }}>
+              <span style={{ color: "#ef4444", fontWeight: 700 }}>•</span>
+              <div><strong>No Tab Switching or Minimizing:</strong> Switching tabs or clicking other applications is tracked in real-time on the invigilator dashboard.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem" }}>
+              <span style={{ color: "#f59e0b", fontWeight: 700 }}>•</span>
+              <div><strong>No Split-Screen:</strong> Halving the screen or resizing the browser alongside other tools is strictly prohibited and triggers an instant lockdown overlay.</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.65rem" }}>
+              <span style={{ color: "#10b981", fontWeight: 700 }}>•</span>
+              <div><strong>Right-Click & Shortcuts Disabled:</strong> Context menu, copy-paste outside the code editor, printing, and developer tools are blocked.</div>
+            </div>
+          </div>
+
+          <button
+            onClick={requestFullScreenMode}
+            style={{
+              width: "100%",
+              padding: "0.85rem 1.5rem",
+              backgroundColor: "#2563eb",
+              backgroundImage: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+              border: "1px solid #3b82f6",
+              borderRadius: "8px",
+              color: "#ffffff",
+              fontWeight: 800,
+              fontSize: "1rem",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.65rem",
+              boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4)"
+            }}
+          >
+            <Maximize2 size={18} />
+            <span>Enter Full Screen & Start Examination</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const currentQ = questions[activeQIndex];
   const currentSub: Partial<SubmissionState> = currentQ ? (submissions[currentQ.id] || {}) : {};
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100vh",
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      filter: isSecurityLocked ? "blur(20px)" : "none",
+      pointerEvents: isSecurityLocked ? "none" : "auto",
+      transition: "filter 0.2s"
+    }}>
       {/* Header */}
       <header className="responsive-header" style={{
         height: "60px",
@@ -422,6 +732,35 @@ export default function AssessmentWorkspace() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          {/* Fullscreen & Security Status Indicator */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            padding: "0.35rem 0.75rem",
+            backgroundColor: isFullscreen ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+            border: `1px solid ${isFullscreen ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+            borderRadius: "6px",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            color: isFullscreen ? "#10b981" : "#ef4444"
+          }}>
+            {isFullscreen ? <ShieldCheck size={14} /> : <AlertTriangle size={14} />}
+            <span>{isFullscreen ? "FULLSCREEN ACTIVE" : "LOCKDOWN ACTIVE"}</span>
+            {focusLossCount > 0 && (
+              <span style={{
+                marginLeft: "0.2rem",
+                padding: "0.1rem 0.4rem",
+                borderRadius: "4px",
+                backgroundColor: focusLossCount >= 5 ? "rgba(239, 68, 68, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                color: focusLossCount >= 5 ? "#ef4444" : "#f59e0b",
+                fontSize: "0.7rem",
+                fontWeight: 800
+              }}>
+                {focusLossCount} flag{focusLossCount > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setShowRulesModal(true)}
@@ -822,6 +1161,105 @@ export default function AssessmentWorkspace() {
                 Return to Examination
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Security Violation Lockdown Modal */}
+      {isSecurityLocked && hasEnteredFullscreen && !isFinished && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(3, 7, 18, 0.96)",
+          backdropFilter: "blur(28px)",
+          WebkitBackdropFilter: "blur(28px)",
+          zIndex: 99999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "1.5rem"
+        }}>
+          <div style={{
+            maxWidth: "540px",
+            width: "100%",
+            backgroundColor: "#060911",
+            border: "2px solid #ef4444",
+            boxShadow: "0 0 50px rgba(239, 68, 68, 0.35)",
+            borderRadius: "14px",
+            padding: "2.25rem 2rem",
+            textAlign: "center"
+          }}>
+            <div style={{
+              width: "64px",
+              height: "64px",
+              borderRadius: "50%",
+              backgroundColor: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 1.25rem",
+              color: "#ef4444"
+            }}>
+              <Lock size={32} />
+            </div>
+
+            <div style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.3rem 0.75rem",
+              backgroundColor: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              borderRadius: "6px",
+              color: "#ef4444",
+              fontSize: "0.8rem",
+              fontWeight: 800,
+              marginBottom: "1rem"
+            }}>
+              <AlertTriangle size={15} />
+              <span>SECURITY ALERT • STRIKE {focusLossCount}</span>
+            </div>
+
+            <h2 style={{ color: "#ffffff", fontSize: "1.35rem", fontWeight: 800, marginBottom: "0.65rem" }}>
+              {lockReason === "FULLSCREEN_EXIT"
+                ? "Full-Screen Mode Required"
+                : lockReason === "WINDOW_RESIZED"
+                ? "Window Resized / Split-Screen Detected"
+                : "Window Focus Lost / Tab Switched"}
+            </h2>
+
+            <p style={{ color: "#8b9bb4", fontSize: "0.9rem", lineHeight: 1.6, marginBottom: "1.75rem" }}>
+              {lockReason === "FULLSCREEN_EXIT"
+                ? "You have exited full-screen display. The examination is paused and question content is hidden until full-screen is restored."
+                : lockReason === "WINDOW_RESIZED"
+                ? "Running in split-screen or resizing your window to half-width is strictly prohibited under AstraNex proctoring rules."
+                : "You navigated away, switched tabs, or clicked another application. This event has been logged directly to the real-time proctoring audit log."}
+            </p>
+
+            <button
+              onClick={requestFullScreenMode}
+              style={{
+                width: "100%",
+                padding: "0.85rem 1.5rem",
+                backgroundColor: "#2563eb",
+                backgroundImage: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                border: "1px solid #3b82f6",
+                borderRadius: "8px",
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: "0.95rem",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4)"
+              }}
+            >
+              <Maximize2 size={18} />
+              <span>Restore Full Screen & Resume Exam</span>
+            </button>
           </div>
         </div>
       )}

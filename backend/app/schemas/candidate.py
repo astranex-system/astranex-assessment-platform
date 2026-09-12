@@ -37,6 +37,7 @@ class SubmissionRequest(BaseModel):
 
 class FocusLossTelemetryRequest(BaseModel):
     timestamp: Optional[datetime] = None
+    reason: Optional[str] = None
 
 # --- Sanitized Response DTOs (Zero Answer Leakage Guaranteed) ---
 class CandidateAssessmentCardOut(BaseModel):
