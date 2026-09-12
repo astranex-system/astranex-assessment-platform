@@ -499,8 +499,8 @@ export default function AssessmentWorkspace() {
   const executeFinalSubmission = async () => {
     try {
       setIsSubmittingFinal(true);
+      // Disarm all security guards immediately (no UI redirect yet)
       isFinishedRef.current = true;
-      setIsFinished(true);
       setIsSecurityLocked(false);
 
       if (typeof window !== "undefined") {
@@ -524,27 +524,24 @@ export default function AssessmentWorkspace() {
         );
       }
 
+      // Call finish — wait for the DB to mark session SUBMITTED before redirecting
       const res = await fetch(`${API_BASE}/api/v1/candidate/session/finish`, {
         method: "POST",
         headers: getAuthHeaders(),
         credentials: "include"
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setFinalResult(data);
-      }
+      // Ignore parse errors — still redirect
+      await res.json().catch(() => ({}));
 
       if (typeof window !== "undefined") {
         sessionStorage.setItem("astranex_just_submitted", "true");
       }
 
       if (typeof document !== "undefined" && document.fullscreenElement) {
-        try {
-          await document.exitFullscreen().catch(() => {});
-        } catch {}
+        try { await document.exitFullscreen().catch(() => {}); } catch {}
       }
 
-      // Immediate redirect to main dashboard
+      // Now redirect — session is SUBMITTED in the DB
       window.location.href = "/";
     } catch (err: any) {
       console.error("Failed to submit assessment:", err);
