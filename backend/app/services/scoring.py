@@ -110,10 +110,21 @@ async def score_submission(db: AsyncSession, submission: Submission) -> Evaluati
         elif question.question_type == QuestionType.TEXT:
             execution_details = {"type": "MANUAL_REVIEW_REQUIRED"}
 
-    # Check for existing evaluation result for this submission
+    from sqlalchemy import delete as sql_delete
+
+    # Fetch ALL existing evaluation results for this submission (duplicates may exist)
     existing_stmt = select(EvaluationResult).where(EvaluationResult.submission_id == submission.id)
     existing_res = await db.execute(existing_stmt)
-    eval_result = existing_res.scalar_one_or_none()
+    existing_rows = existing_res.scalars().all()
+
+    if len(existing_rows) > 1:
+        # Deduplicate: keep the first, delete the rest
+        logger.warning(f"Found {len(existing_rows)} duplicate EvaluationResult rows for submission {submission.id} — deduplicating")
+        ids_to_delete = [r.id for r in existing_rows[1:]]
+        await db.execute(sql_delete(EvaluationResult).where(EvaluationResult.id.in_(ids_to_delete)))
+        await db.commit()
+
+    eval_result = existing_rows[0] if existing_rows else None
 
     if eval_result:
         eval_result.score_earned = score_earned
@@ -130,8 +141,7 @@ async def score_submission(db: AsyncSession, submission: Submission) -> Evaluati
         )
         db.add(eval_result)
 
-    # Clean up any stale evaluation results for previous submissions of the same question in this session
-    from sqlalchemy import delete as sql_delete
+    # Clean up stale evaluation results for previous submissions of the same question in this session
     cleanup_stmt = sql_delete(EvaluationResult).where(
         EvaluationResult.session_id == submission.session_id,
         EvaluationResult.submission_id != submission.id,
