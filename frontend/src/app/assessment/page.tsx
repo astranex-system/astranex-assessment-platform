@@ -507,10 +507,30 @@ export default function AssessmentWorkspace() {
         window.onbeforeunload = null;
       }
 
-      // Flush any pending answers first
-      const subEntries = Object.values(submissions).filter(
-        s => s.selected_option_id || s.code_response || s.text_response
-      );
+      // Default starter templates shipped with CodingPad — if a candidate's code
+      // matches any of these exactly, it means they never wrote real code.
+      // Don't flush these to the backend so they score 0.
+      const DEFAULT_CODING_TEMPLATES = [
+        // Python
+        "# AstraNex Python 3 Environment\ndef solution():\n    # Write your solution code here\n    pass\n\nif __name__ == \"__main__\":\n    solution()\n",
+        // JavaScript
+        "// AstraNex JavaScript (Node.js) Environment\nfunction solution() {\n    // Write your solution code here\n}\n\nsolution();\n",
+        // C++
+        "// AstraNex C++ 17 Environment\n#include <iostream>\n#include <vector>\n#include <string>\n#include <algorithm>\n\nusing namespace std;\n\nint main() {\n    // Write your solution code here\n    return 0;\n}\n",
+        // Java
+        "// AstraNex Java Environment\nimport java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        // Write your solution code here\n    }\n}\n",
+      ];
+
+      const isDefaultTemplate = (code: string) => {
+        const s = code.trim();
+        return DEFAULT_CODING_TEMPLATES.some(t => t.trim() === s);
+      };
+
+      // Flush any pending answers first — but skip coding submissions that are just starter templates
+      const subEntries = Object.values(submissions).filter(s => {
+        if (s.code_response && isDefaultTemplate(s.code_response)) return false;
+        return s.selected_option_id || s.code_response || s.text_response;
+      });
       if (subEntries.length > 0) {
         await Promise.all(
           subEntries.map(sub =>

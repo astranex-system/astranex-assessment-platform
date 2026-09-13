@@ -2089,3 +2089,95 @@ async def trigger_database_migration(
     from app.database import init_db
     await init_db()
     return {"status": "SUCCESS", "message": "Database migrations verified and applied."}
+
+
+@router.post("/maintenance/rescore-session/{session_id}")
+async def rescore_candidate_session(
+    session_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Re-runs server-side scoring for every submission in a session.
+    Safe to call on already-scored sessions — preserves submitted answers,
+    only recalculates EvaluationResult rows.
+    Fixes inflated coding scores caused by template-only submissions.
+    """
+    from app.services.scoring import score_submission as do_score
+
+    sess_stmt = select(AssessmentSession).options(
+        selectinload(AssessmentSession.submissions)
+    ).where(AssessmentSession.id == session_id)
+    sess_res = await db.execute(sess_stmt)
+    sess = sess_res.scalar_one_or_none()
+    if not sess:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+
+    rescored = 0
+    errors = []
+    for sub in sess.submissions:
+        try:
+            await do_score(db, sub)
+            rescored += 1
+        except Exception as e:
+            errors.append({"submission_id": sub.id, "error": str(e)})
+
+    await log_audit_event(
+        db, "RESCORE_SESSION", f"session:{session_id}",
+        actor_id=admin.id, actor_role=admin.role.value,
+        metadata={"rescored": rescored, "errors": len(errors)}
+    )
+    return {
+        "status": "SUCCESS",
+        "session_id": session_id,
+        "rescored_count": rescored,
+        "errors": errors
+    }
+
+
+@router.post("/maintenance/rescore-assessment/{assessment_id}")
+async def rescore_all_sessions_for_assessment(
+    assessment_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Re-scores ALL SUBMITTED sessions for an assessment.
+    Correct inflated scores from template code across the board without losing data.
+    """
+    from app.services.scoring import score_submission as do_score
+
+    sessions_stmt = (
+        select(AssessmentSession)
+        .options(selectinload(AssessmentSession.submissions))
+        .where(
+            AssessmentSession.assessment_id == assessment_id,
+            AssessmentSession.status.in_([SessionStatus.SUBMITTED, SessionStatus.EXPIRED])
+        )
+    )
+    sessions_res = await db.execute(sessions_stmt)
+    sessions = sessions_res.scalars().all()
+
+    total_rescored = 0
+    total_errors = []
+    for sess in sessions:
+        for sub in sess.submissions:
+            try:
+                await do_score(db, sub)
+                total_rescored += 1
+            except Exception as e:
+                total_errors.append({"session_id": sess.id, "submission_id": sub.id, "error": str(e)})
+
+    await log_audit_event(
+        db, "RESCORE_ASSESSMENT", f"assessment:{assessment_id}",
+        actor_id=admin.id, actor_role=admin.role.value,
+        metadata={"sessions": len(sessions), "rescored": total_rescored, "errors": len(total_errors)}
+    )
+    return {
+        "status": "SUCCESS",
+        "assessment_id": assessment_id,
+        "sessions_processed": len(sessions),
+        "rescored_count": total_rescored,
+        "errors": total_errors
+    }
+
