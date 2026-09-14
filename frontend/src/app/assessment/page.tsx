@@ -1042,6 +1042,8 @@ export default function AssessmentWorkspace() {
                     language={currentSub.programming_language || "python"}
                     onCodeChange={(newCode, newLang) => handleCodeChange(currentQ.id, newCode, newLang)}
                     saveMessage={saveMessage}
+                    getAuthHeaders={getAuthHeaders}
+                    apiBase={API_BASE}
                   />
                 </div>
               )}

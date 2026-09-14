@@ -15,7 +15,7 @@ from app.schemas.candidate import (
     StartSessionRequest, CandidateRegisterRequest, CandidateLoginRequest, PublicAssessmentOut, SubmissionRequest,
     CandidateSessionMeOut, CandidateQuestionOut, CandidateSubmissionResultOut,
     CandidateFinalResultOut, CandidateAssessmentOut, CandidateQuestionOptionOut,
-    CandidateSubmissionStateOut, FocusLossTelemetryRequest
+    CandidateSubmissionStateOut, FocusLossTelemetryRequest, RunCodeRequest, RunCodeResultOut
 )
 from app.dependencies import get_current_candidate_session
 from app.security import (
@@ -23,6 +23,7 @@ from app.security import (
     hash_password, verify_password, SESSION_COOKIE_NAME, CSRF_COOKIE_NAME
 )
 from app.services.scoring import score_submission
+from sandbox_runner.runner import IsolatedCodeRunner
 from app.services.audit import log_audit_event
 
 logger = logging.getLogger("astranex.candidate_api")
@@ -781,6 +782,32 @@ async def get_assessment_questions(
             )
         )
     return out_list
+
+@router.post("/run-code", response_model=RunCodeResultOut)
+async def run_candidate_code(
+    payload: RunCodeRequest,
+    request: Request,
+    session: AssessmentSession = Depends(get_current_candidate_session),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Executes candidate code inside isolated sandbox with optional stdin input.
+    Allows candidates to run and verify their logic before final submission.
+    """
+    verify_csrf_token(request)
+
+    res = IsolatedCodeRunner.run_code(
+        code=payload.code,
+        language=payload.programming_language or "python",
+        stdin_input=payload.stdin_input or ""
+    )
+
+    return RunCodeResultOut(
+        status=res.get("status", "UNKNOWN"),
+        stdout=res.get("stdout", ""),
+        stderr=res.get("stderr", ""),
+        execution_time=res.get("execution_time", 0.0)
+    )
 
 @router.post("/submit", response_model=CandidateSubmissionResultOut)
 async def submit_question_answer(

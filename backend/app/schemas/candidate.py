@@ -39,6 +39,17 @@ class FocusLossTelemetryRequest(BaseModel):
     timestamp: Optional[datetime] = None
     reason: Optional[str] = None
 
+class RunCodeRequest(BaseModel):
+    code: str
+    programming_language: str = "python"
+    stdin_input: Optional[str] = ""
+
+class RunCodeResultOut(BaseModel):
+    status: str
+    stdout: str
+    stderr: str
+    execution_time: float
+
 # --- Sanitized Response DTOs (Zero Answer Leakage Guaranteed) ---
 class CandidateAssessmentCardOut(BaseModel):
     id: str

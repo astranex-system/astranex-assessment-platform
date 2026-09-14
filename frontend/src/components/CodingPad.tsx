@@ -10,7 +10,13 @@ import {
   FileCode,
   Sparkles,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Play,
+  Loader2,
+  ChevronUp,
+  ChevronDown,
+  Clock,
+  AlertCircle
 } from "lucide-react";
 
 interface CodingPadProps {
@@ -19,6 +25,8 @@ interface CodingPadProps {
   language: string;
   onCodeChange: (code: string, language: string) => void;
   saveMessage?: string | null;
+  getAuthHeaders?: () => Record<string, string>;
+  apiBase?: string;
 }
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -66,15 +74,74 @@ export default function CodingPad({
   code,
   language = "python",
   onCodeChange,
-  saveMessage
+  saveMessage,
+  getAuthHeaders,
+  apiBase = process.env.NEXT_PUBLIC_API_URL || "https://astranex-assesment-api.onrender.com"
 }: CodingPadProps) {
   const [selectedLang, setSelectedLang] = useState(language || "python");
   const [copied, setCopied] = useState(false);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Run Code & Terminal State
+  const [isRunning, setIsRunning] = useState(false);
+  const [stdinInput, setStdinInput] = useState("");
+  const [showStdin, setShowStdin] = useState(false);
+  const [outputResult, setOutputResult] = useState<{
+    status: string;
+    stdout: string;
+    stderr: string;
+    execution_time: number;
+  } | null>(null);
+  const [showConsole, setShowConsole] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
+
+  const handleRunCode = async () => {
+    if (isRunning) return;
+    try {
+      setIsRunning(true);
+      setShowConsole(true);
+      setOutputResult(null);
+
+      const headers = getAuthHeaders ? getAuthHeaders() : { "Content-Type": "application/json" };
+
+      const res = await fetch(`${apiBase}/api/v1/candidate/run-code`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({
+          code: code || "",
+          programming_language: selectedLang,
+          stdin_input: stdinInput
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setOutputResult({
+          status: "ERROR",
+          stdout: "",
+          stderr: errData.detail || `Server returned HTTP ${res.status}`,
+          execution_time: 0.0
+        });
+        return;
+      }
+
+      const data = await res.json();
+      setOutputResult(data);
+    } catch (err: any) {
+      setOutputResult({
+        status: "ERROR",
+        stdout: "",
+        stderr: err.message || "Failed to contact execution server.",
+        execution_time: 0.0
+      });
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   // Sync internal selected language with prop
   useEffect(() => {
@@ -366,6 +433,63 @@ export default function CodingPad({
             <span>{copied ? "Copied" : "Copy"}</span>
           </button>
 
+          {/* Custom Stdin Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowStdin(!showStdin)}
+            title="Provide custom input (stdin)"
+            style={{
+              padding: "0.3rem 0.6rem",
+              backgroundColor: showStdin ? "#1e293b" : "#162035",
+              border: "1px solid " + (showStdin ? "#38bdf8" : "#233352"),
+              color: showStdin ? "#38bdf8" : "#94a3b8",
+              borderRadius: "5px",
+              cursor: "pointer",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.3rem"
+            }}
+          >
+            <Terminal size={12} />
+            <span>Input</span>
+          </button>
+
+          {/* RUN CODE BUTTON */}
+          <button
+            type="button"
+            onClick={handleRunCode}
+            disabled={isRunning}
+            title="Execute code in sandbox and see output"
+            style={{
+              padding: "0.32rem 0.85rem",
+              backgroundColor: isRunning ? "#064e3b" : "#059669",
+              border: "1px solid #10b981",
+              color: "#ffffff",
+              borderRadius: "5px",
+              cursor: isRunning ? "not-allowed" : "pointer",
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)"
+            }}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                <span>Running...</span>
+              </>
+            ) : (
+              <>
+                <Play size={13} fill="#ffffff" />
+                <span>Run Code</span>
+              </>
+            )}
+          </button>
+
           {/* Fullscreen Toggle */}
           <button
             type="button"
@@ -462,6 +586,154 @@ export default function CodingPad({
         />
       </div>
 
+      {/* Optional Custom Stdin Drawer */}
+      {showStdin && (
+        <div style={{
+          backgroundColor: "#080d1a",
+          borderTop: "1px solid #1e293b",
+          padding: "0.6rem 1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.35rem"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Standard Input (stdin)
+            </span>
+            <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+              Passed to your program when you click &quot;Run Code&quot;
+            </span>
+          </div>
+          <textarea
+            value={stdinInput}
+            onChange={(e) => setStdinInput(e.target.value)}
+            placeholder="Type custom test input here (e.g. 5\n1 2 3)..."
+            rows={2}
+            style={{
+              width: "100%",
+              backgroundColor: "#050810",
+              border: "1px solid #1e293b",
+              borderRadius: "4px",
+              color: "#e2e8f0",
+              fontSize: "0.8rem",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+              padding: "0.4rem 0.6rem",
+              outline: "none",
+              resize: "vertical"
+            }}
+          />
+        </div>
+      )}
+
+      {/* Interactive Execution Output Console */}
+      {showConsole && (
+        <div style={{
+          backgroundColor: "#050810",
+          borderTop: "2px solid " + (outputResult?.status === "SUCCESS" ? "#10b981" : (outputResult?.status ? "#ef4444" : "#1e293b")),
+          maxHeight: "220px",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        }}>
+          {/* Console Header Bar */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0.4rem 1rem",
+            backgroundColor: "#080d1a",
+            borderBottom: "1px solid #131c30"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Terminal size={13} color={outputResult?.status === "SUCCESS" ? "#10b981" : "#38bdf8"} />
+              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f1f5f9" }}>Execution Console</span>
+              {isRunning && (
+                <span style={{ fontSize: "0.7rem", color: "#f59e0b", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                  <Loader2 size={11} className="animate-spin" /> Compiling & Running...
+                </span>
+              )}
+              {outputResult && !isRunning && (
+                <span style={{
+                  fontSize: "0.7rem",
+                  padding: "0.15rem 0.45rem",
+                  borderRadius: "4px",
+                  fontWeight: 700,
+                  backgroundColor: outputResult.status === "SUCCESS" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                  color: outputResult.status === "SUCCESS" ? "#10b981" : "#ef4444"
+                }}>
+                  {outputResult.status}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              {outputResult?.execution_time !== undefined && !isRunning && (
+                <span style={{ fontSize: "0.7rem", color: "#64748b", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                  <Clock size={11} /> {outputResult.execution_time}s
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowConsole(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#64748b",
+                  cursor: "pointer",
+                  fontSize: "0.75rem",
+                  padding: "0.1rem 0.3rem"
+                }}
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+
+          {/* Console Content Area */}
+          <div style={{
+            padding: "0.6rem 1rem",
+            overflowY: "auto",
+            maxHeight: "170px",
+            fontSize: "0.8rem",
+            lineHeight: "1.5"
+          }}>
+            {isRunning && (
+              <div style={{ color: "#64748b", fontStyle: "italic" }}>
+                Running your solution inside secure isolated sandbox environment...
+              </div>
+            )}
+
+            {!isRunning && outputResult && (
+              <>
+                {outputResult.stdout && (
+                  <div>
+                    <div style={{ color: "#38bdf8", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>STDOUT:</div>
+                    <pre style={{ margin: 0, color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {outputResult.stdout}
+                    </pre>
+                  </div>
+                )}
+
+                {outputResult.stderr && (
+                  <div style={{ marginTop: outputResult.stdout ? "0.5rem" : 0 }}>
+                    <div style={{ color: "#ef4444", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>ERROR / STDERR:</div>
+                    <pre style={{ margin: 0, color: "#fca5a5", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {outputResult.stderr}
+                    </pre>
+                  </div>
+                )}
+
+                {!outputResult.stdout && !outputResult.stderr && (
+                  <div style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                    Program executed successfully with no output returned.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* VS Code Style Status Bar */}
       <div style={{
         height: "28px",
@@ -478,10 +750,26 @@ export default function CodingPad({
       }}>
         {/* Left: Terminal status & save indicator */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", color: "#38bdf8" }}>
+          <button
+            type="button"
+            onClick={() => setShowConsole(!showConsole)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: outputResult ? (outputResult.status === "SUCCESS" ? "#10b981" : "#ef4444") : "#38bdf8",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              padding: 0,
+              fontSize: "0.72rem",
+              fontWeight: 600
+            }}
+          >
             <Terminal size={12} />
-            <span>Interactive Code Pad</span>
-          </div>
+            <span>Console {outputResult ? `(${outputResult.status})` : ""}</span>
+            {showConsole ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
+          </button>
           {saveMessage && (
             <span style={{ color: "#10b981", fontWeight: 700 }}>
               ● {saveMessage}
@@ -500,3 +788,4 @@ export default function CodingPad({
     </div>
   );
 }
+
