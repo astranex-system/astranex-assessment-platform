@@ -105,6 +105,13 @@ export default function CodingPad({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const consoleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showConsole && consoleRef.current) {
+      consoleRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [showConsole, outputResult, isRunning]);
 
   const handleRunCode = async () => {
     if (isRunning) return;
@@ -635,7 +642,7 @@ export default function CodingPad({
 
       {/* Interactive Execution Output Console */}
       {showConsole && (
-        <div style={{
+        <div ref={consoleRef} style={{
           backgroundColor: "#050810",
           borderTop: "2px solid " + (outputResult?.status === "SUCCESS" ? "#10b981" : (outputResult?.status ? "#ef4444" : "#1e293b")),
           height: "220px",
