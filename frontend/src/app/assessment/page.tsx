@@ -21,6 +21,8 @@ interface Question {
   marks: number;
   display_order: number;
   options: QuestionOption[];
+  section?: string;
+  difficulty?: string;
 }
 
 interface SubmissionState {
@@ -985,18 +987,59 @@ export default function AssessmentWorkspace() {
         <main style={{ flex: 1, padding: "2rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           {currentQ ? (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--accent-cyan)", letterSpacing: "0.05em" }}>
-                    QUESTION {activeQIndex + 1} OF {questions.length} • {currentQ.marks} MARKS
-                  </span>
-                  <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginTop: "0.25rem" }}>{currentQ.question_text}</h2>
+              {/* Problem Statement Card */}
+              <div style={{
+                backgroundColor: "#0b1120",
+                border: "1px solid #1e293b",
+                borderRadius: "10px",
+                padding: "1.25rem 1.5rem",
+                boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em", backgroundColor: "rgba(56, 189, 248, 0.1)", padding: "0.2rem 0.6rem", borderRadius: "4px" }}>
+                      QUESTION {activeQIndex + 1} OF {questions.length}
+                    </span>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#a855f7", backgroundColor: "rgba(168, 85, 247, 0.1)", padding: "0.2rem 0.6rem", borderRadius: "4px" }}>
+                      {currentQ.marks} MARKS
+                    </span>
+                    {currentQ.section && (
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#94a3b8", backgroundColor: "#1e293b", padding: "0.2rem 0.6rem", borderRadius: "4px" }}>
+                        {currentQ.section}
+                      </span>
+                    )}
+                    {currentQ.difficulty && (
+                      <span style={{
+                        fontSize: "0.75rem",
+                        fontWeight: 800,
+                        padding: "0.2rem 0.6rem",
+                        borderRadius: "4px",
+                        backgroundColor: currentQ.difficulty.toLowerCase() === "easy" ? "rgba(16, 185, 129, 0.15)" : currentQ.difficulty.toLowerCase() === "hard" ? "rgba(239, 68, 68, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        color: currentQ.difficulty.toLowerCase() === "easy" ? "#10b981" : currentQ.difficulty.toLowerCase() === "hard" ? "#ef4444" : "#f59e0b"
+                      }}>
+                        {currentQ.difficulty.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+
+                  {saveMessage && (
+                    <span style={{ fontSize: "0.8rem", color: "#10b981", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                      <CheckCircle2 size={14} /> {saveMessage}
+                    </span>
+                  )}
                 </div>
-                {saveMessage && (
-                  <span style={{ fontSize: "0.8rem", color: "var(--accent-green)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                    <CheckCircle2 size={14} /> {saveMessage}
-                  </span>
-                )}
+
+                <div style={{
+                  fontSize: "1.05rem",
+                  fontWeight: 500,
+                  color: "#f8fafc",
+                  lineHeight: "1.7",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                }}>
+                  {currentQ.question_text}
+                </div>
               </div>
 
               {/* Question Input Type Component */}
@@ -1035,7 +1078,7 @@ export default function AssessmentWorkspace() {
               )}
 
               {currentQ.question_type === "CODING" && (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "460px", marginBottom: "1rem" }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "520px", marginBottom: "1rem" }}>
                   <CodingPad
                     questionId={currentQ.id}
                     code={currentSub.code_response || ""}
@@ -1044,6 +1087,10 @@ export default function AssessmentWorkspace() {
                     saveMessage={saveMessage}
                     getAuthHeaders={getAuthHeaders}
                     apiBase={API_BASE}
+                    questionText={currentQ.question_text}
+                    section={currentQ.section}
+                    difficulty={currentQ.difficulty}
+                    marks={currentQ.marks}
                   />
                 </div>
               )}
