@@ -5,7 +5,7 @@ import json
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete, update, or_, and_
 from sqlalchemy.orm import selectinload
@@ -1799,8 +1799,216 @@ async def handle_integrity_action(
     return {"message": f"Event marked as {act}."}
 
 # ==================================================
-# REPORTS EXPORT
+# REPORTS EXPORT & QUESTION-WISE SUBMISSIONS
 # ==================================================
+
+async def build_question_wise_submissions_data(
+    db: AsyncSession,
+    assessment_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Compiles detailed question-by-question candidate answers, scores, and rubrics
+    across assessment attempts for evaluator validation and reporting.
+    """
+    sess_stmt = (
+        select(AssessmentSession)
+        .options(
+            selectinload(AssessmentSession.candidate),
+            selectinload(AssessmentSession.submissions),
+            selectinload(AssessmentSession.results)
+        )
+        .order_by(AssessmentSession.started_at.desc())
+    )
+    if assessment_id:
+        sess_stmt = sess_stmt.where(AssessmentSession.assessment_id == assessment_id)
+
+    sess_res = await db.execute(sess_stmt)
+    all_sessions = sess_res.scalars().all()
+
+    # Prioritize submitted sessions and sessions with active submissions
+    active_sessions = [s for s in all_sessions if s.status == SessionStatus.SUBMITTED or len(s.submissions) > 0]
+    if not active_sessions:
+        active_sessions = all_sessions
+
+    # Fetch referenced assessments with full questions, options, and answers
+    asm_ids = list({s.assessment_id for s in active_sessions if s.assessment_id})
+    if assessment_id and assessment_id not in asm_ids:
+        asm_ids.append(assessment_id)
+
+    if not asm_ids:
+        return []
+
+    asm_stmt = (
+        select(Assessment)
+        .options(
+            selectinload(Assessment.questions).selectinload(Question.options),
+            selectinload(Assessment.questions).selectinload(Question.answer)
+        )
+        .where(Assessment.id.in_(asm_ids))
+    )
+    asm_res = await db.execute(asm_stmt)
+    asms_map = {a.id: a for a in asm_res.scalars().all()}
+
+    data: List[Dict[str, Any]] = []
+
+    for sess in active_sessions:
+        cand_name = sess.candidate.full_name if sess.candidate else "Unknown Candidate"
+        cand_email = sess.candidate.email if sess.candidate else "unknown@domain.com"
+        asm = asms_map.get(sess.assessment_id)
+        if not asm or not asm.questions:
+            continue
+
+        asm_title = asm.title
+        sess_status = sess.status.value if sess.status else "UNKNOWN"
+
+        eval_map = {r.submission_id: r for r in sess.results if r.submission_id}
+        sub_map = {s.question_id: s for s in sess.submissions if s.question_id}
+
+        # Build options lookup for this assessment
+        options_map = {
+            opt.id: opt.option_text
+            for q in asm.questions
+            for opt in (q.options or [])
+        }
+
+        sorted_questions = sorted(asm.questions, key=lambda q: (q.display_order, q.id))
+
+        for idx, q in enumerate(sorted_questions, start=1):
+            q_code = q.question_code or f"Q{idx:02d}"
+            q_section = q.section or "General"
+            q_type = q.question_type.value if hasattr(q.question_type, "value") else str(q.question_type)
+            q_text = q.question_text
+            max_marks = float(q.marks or 1.0)
+
+            # Determine correct reference / rubric
+            correct_ref = "N/A"
+            if q.question_type == QuestionType.MCQ:
+                if q.answer and q.answer.correct_option_id:
+                    correct_ref = options_map.get(q.answer.correct_option_id, f"Option ID: {q.answer.correct_option_id}")
+            else:
+                if q.answer and q.answer.rubric_text:
+                    correct_ref = q.answer.rubric_text
+
+            sub = sub_map.get(q.id)
+            if sub:
+                eval_r = eval_map.get(sub.id)
+                lang = sub.programming_language or "N/A"
+
+                if q.question_type == QuestionType.MCQ:
+                    cand_answer = options_map.get(sub.selected_option_id, sub.selected_option_id or "[No option selected]")
+                elif q.question_type == QuestionType.CODING:
+                    cand_answer = sub.code_response or "[Empty code]"
+                else:
+                    cand_answer = sub.text_response or "[Empty response]"
+
+                score_earned = float(eval_r.score_earned) if eval_r else 0.0
+                if eval_r:
+                    if eval_r.is_correct:
+                        is_corr_str = "CORRECT"
+                    elif score_earned > 0:
+                        is_corr_str = "PARTIAL"
+                    else:
+                        is_corr_str = "INCORRECT"
+                else:
+                    is_corr_str = "PENDING"
+
+                exec_summary = "N/A"
+                if eval_r and eval_r.execution_details:
+                    ed = eval_r.execution_details
+                    if isinstance(ed, dict):
+                        passed_tests = ed.get("passed_tests")
+                        total_tests = ed.get("total_tests")
+                        err = ed.get("compile_error") or ed.get("error")
+                        if passed_tests is not None and total_tests is not None:
+                            exec_summary = f"{passed_tests}/{total_tests} test cases passed"
+                            if err:
+                                exec_summary += f" ({err})"
+                        elif err:
+                            exec_summary = f"Error: {err}"
+                        else:
+                            exec_summary = json.dumps(ed)
+                    else:
+                        exec_summary = str(ed)
+
+                sub_time = sub.submitted_at.strftime("%Y-%m-%d %H:%M:%S UTC") if sub.submitted_at else ""
+            else:
+                cand_answer = "[Unattempted]"
+                lang = "N/A"
+                score_earned = 0.0
+                is_corr_str = "UNATTEMPTED"
+                exec_summary = "Not Attempted"
+                sub_time = ""
+
+            data.append({
+                "Candidate Name": cand_name,
+                "Candidate Email": cand_email,
+                "Assessment": asm_title,
+                "Session Status": sess_status,
+                "Question No": idx,
+                "Question Code": q_code,
+                "Section": q_section,
+                "Question Type": q_type,
+                "Question Text": q_text,
+                "Candidate Answer": cand_answer,
+                "Language": lang,
+                "Correct Answer / Rubric": correct_ref,
+                "Score Earned": round(score_earned, 2),
+                "Max Marks": round(max_marks, 2),
+                "Result": is_corr_str,
+                "Execution Summary": exec_summary,
+                "Submitted At": sub_time
+            })
+
+    return data
+
+
+def generate_submissions_csv_string(rows: List[Dict[str, Any]]) -> str:
+    """Serializes a list of dictionaries into an RFC 4180 compliant CSV string."""
+    headers = [
+        "Candidate Name", "Candidate Email", "Assessment", "Session Status",
+        "Question No", "Question Code", "Section", "Question Type", "Question Text",
+        "Candidate Answer", "Language", "Correct Answer / Rubric",
+        "Score Earned", "Max Marks", "Result", "Execution Summary", "Submitted At"
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow(r)
+    return output.getvalue()
+
+
+@router.get("/assessments/{assessment_id}/submissions/export-csv")
+async def export_assessment_submissions_csv(
+    assessment_id: str,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Exports all candidate submissions and answers question-wise for an assessment directly as a downloadable CSV.
+    Used by evaluators and recruiters to validate candidate answers and scoring.
+    """
+    asm_stmt = select(Assessment).where(Assessment.id == assessment_id)
+    asm_res = await db.execute(asm_stmt)
+    asm = asm_res.scalar_one_or_none()
+    if not asm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
+
+    rows = await build_question_wise_submissions_data(db, assessment_id=assessment_id)
+    csv_content = generate_submissions_csv_string(rows)
+
+    clean_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in asm.title).strip("_")
+    filename = f"astranex_{clean_title[:30]}_submissions_{int(datetime.now(timezone.utc).timestamp())}.csv"
+
+    return Response(
+        content=csv_content.encode("utf-8-sig"),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
+
 
 @router.get("/reports/{report_type}", response_model=ReportSummaryOut)
 async def generate_report(
@@ -1809,7 +2017,7 @@ async def generate_report(
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    """Generates structured report datasets: assessment, ranking, questions, sections, completion, integrity."""
+    """Generates structured report datasets: assessment, ranking, submissions, questions, sections, completion, integrity."""
     rtype = report_type.lower().strip()
     now = datetime.now(timezone.utc)
 
@@ -1850,6 +2058,8 @@ async def generate_report(
         data.sort(key=lambda x: x["Score"], reverse=True)
         for idx, row in enumerate(data, start=1):
             row["Rank"] = idx
+    elif rtype in ("submissions", "questions"):
+        data = await build_question_wise_submissions_data(db, assessment_id=assessment_id)
     elif rtype == "integrity":
         ie_res = await db.execute(select(IntegrityEvent).options(selectinload(IntegrityEvent.candidate)))
         data = [

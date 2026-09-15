@@ -106,6 +106,7 @@ export default function AdminPortal() {
   const [slotNameInput, setSlotNameInput] = useState<string>("Slot 1");
   const [isTogglingSlot, setIsTogglingSlot] = useState<boolean>(false);
   const [isReleasingResults, setIsReleasingResults] = useState<boolean>(false);
+  const [isExportingSubmissions, setIsExportingSubmissions] = useState<string | null>(null);
 
   // --- Results & Ranking State ---
   const [resultsList, setResultsList] = useState<any[]>([]);
@@ -394,6 +395,37 @@ export default function AdminPortal() {
       showToast(e.message || "Error updating result visibility", "error");
     } finally {
       setIsReleasingResults(false);
+    }
+  };
+
+  const handleDownloadAssessmentSubmissionsCsv = async (assessmentId: string, assessmentTitle: string) => {
+    if (!adminToken) return;
+    try {
+      setIsExportingSubmissions(assessmentId);
+      const res = await fetch(`${API_BASE}/api/v1/admin/assessments/${assessmentId}/submissions/export-csv`, {
+        headers: authHeaders
+      });
+      if (!checkAuth(res.status)) return;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || "Failed to download submissions CSV", "error");
+        return;
+      }
+      const blob = await res.blob();
+      const cleanTitle = (assessmentTitle || "assessment").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `astranex_${cleanTitle}_submissions_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("✅ Submissions answers CSV downloaded successfully!", "success");
+    } catch (e: any) {
+      showToast(e.message || "Error exporting submissions CSV", "error");
+    } finally {
+      setIsExportingSubmissions(null);
     }
   };
 
@@ -2299,6 +2331,31 @@ export default function AdminPortal() {
                           {asm.result_visibility === "IMMEDIATE" ? "🔒 Hide Results" : "🏆 Release Results"}
                         </button>
 
+                        {/* Export Question-Wise Submissions CSV */}
+                        <button
+                          type="button"
+                          disabled={isExportingSubmissions === asm.id}
+                          onClick={() => handleDownloadAssessmentSubmissionsCsv(asm.id, asm.title)}
+                          title="Download all candidate answers question-wise in CSV for validation"
+                          style={{
+                            padding: "0.4rem 0.65rem",
+                            backgroundColor: "rgba(56, 189, 248, 0.12)",
+                            border: "1px solid rgba(56, 189, 248, 0.4)",
+                            color: "#38bdf8",
+                            borderRadius: "4px",
+                            cursor: isExportingSubmissions === asm.id ? "wait" : "pointer",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            opacity: isExportingSubmissions === asm.id ? 0.7 : 1
+                          }}
+                        >
+                          <Download size={12} />
+                          <span>{isExportingSubmissions === asm.id ? "Exporting..." : "📥 Answers CSV"}</span>
+                        </button>
+
                         {asm.status !== "ACTIVE" ? (
                           <button
                             onClick={() => handleSetAssessmentStatus(asm.id, "ACTIVE")}
@@ -3108,6 +3165,32 @@ export default function AdminPortal() {
                     >
                       Filter
                     </button>
+
+                    {resultsFilterAsm !== "ALL" && (
+                      <button
+                        onClick={() => {
+                          const asm = assessments.find(a => a.id === resultsFilterAsm);
+                          handleDownloadAssessmentSubmissionsCsv(resultsFilterAsm, asm?.title || "assessment");
+                        }}
+                        disabled={isExportingSubmissions === resultsFilterAsm}
+                        style={{
+                          padding: "0.5rem 1rem",
+                          backgroundColor: "rgba(56, 189, 248, 0.15)",
+                          border: "1px solid rgba(56, 189, 248, 0.4)",
+                          borderRadius: "6px",
+                          color: "#38bdf8",
+                          fontSize: "0.85rem",
+                          fontWeight: 700,
+                          cursor: isExportingSubmissions === resultsFilterAsm ? "wait" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.4rem"
+                        }}
+                      >
+                        <Download size={14} />
+                        <span>{isExportingSubmissions === resultsFilterAsm ? "Exporting..." : "Export Answers CSV"}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Results Table */}
@@ -3529,6 +3612,7 @@ export default function AdminPortal() {
                 {[
                   { id: "assessment", label: "Assessment Report" },
                   { id: "ranking", label: "Candidate Ranking" },
+                  { id: "submissions", label: "Question-Wise Submissions" },
                   { id: "questions", label: "Question Analytics" },
                   { id: "integrity", label: "Integrity Incidents" },
                 ].map((item) => (
@@ -3567,7 +3651,7 @@ export default function AdminPortal() {
                       <tr style={{ borderBottom: "1px solid #162035", color: "#8b9bb4", fontSize: "0.75rem", textTransform: "uppercase" }}>
                         {reportData?.data && reportData.data.length > 0 ? (
                           Object.keys(reportData.data[0]).map(key => (
-                            <th key={key} style={{ padding: "0.75rem 1rem" }}>{key}</th>
+                            <th key={key} style={{ padding: "0.75rem 1rem", whiteSpace: "nowrap" }}>{key}</th>
                           ))
                         ) : <th>No Data</th>}
                       </tr>
@@ -3590,8 +3674,19 @@ export default function AdminPortal() {
                         reportData.data.map((row: any, rIdx: number) => (
                           <tr key={rIdx} style={{ borderBottom: "1px solid #0f172a" }}>
                             {Object.values(row).map((val: any, cIdx: number) => (
-                              <td key={cIdx} style={{ padding: "0.75rem 1rem", color: "#ffffff" }}>
-                                {String(val)}
+                              <td
+                                key={cIdx}
+                                style={{
+                                  padding: "0.75rem 1rem",
+                                  color: "#ffffff",
+                                  maxWidth: "320px",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap"
+                                }}
+                                title={String(val ?? "")}
+                              >
+                                {String(val ?? "")}
                               </td>
                             ))}
                           </tr>

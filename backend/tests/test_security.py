@@ -535,4 +535,52 @@ async def test_delete_candidate_and_purge_demo(async_client: AsyncClient):
     assert not any(c["id"] == demo_id for c in check_resp2.json())
 
 
+@pytest.mark.asyncio
+async def test_question_wise_submissions_export_csv(async_client: AsyncClient):
+    """Verifies that admins can download question-wise submissions as CSV and report."""
+    async with TestingSessionLocal() as db:
+        admin = User(email="admin.export@astranex.def", password_hash=hash_password("admin123"), full_name="Admin Export", role=UserRole.ADMIN)
+        db.add(admin)
+        await db.commit()
+        admin_id = admin.id
+
+    admin_token = create_access_token({"user_id": admin_id, "email": "admin.export@astranex.def", "role": "admin"})
+
+    # 1. Create assessment
+    asm_resp = await async_client.post(
+        "/api/v1/admin/assessments",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "title": "Submissions Validation Test Assessment",
+            "duration_minutes": 30,
+            "passing_marks": 50,
+            "total_marks": 100
+        }
+    )
+    assert asm_resp.status_code == 200
+    asm_id = asm_resp.json()["id"]
+
+    # 2. Test direct CSV export endpoint
+    csv_resp = await async_client.get(
+        f"/api/v1/admin/assessments/{asm_id}/submissions/export-csv",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert csv_resp.status_code == 200
+    assert "text/csv" in csv_resp.headers["content-type"]
+    assert "attachment" in csv_resp.headers["content-disposition"]
+    assert "Candidate Name" in csv_resp.text
+    assert "Candidate Answer" in csv_resp.text
+    assert "Correct Answer / Rubric" in csv_resp.text
+
+    # 3. Test reports endpoint
+    rep_resp = await async_client.get(
+        "/api/v1/admin/reports/submissions",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert rep_resp.status_code == 200
+    data = rep_resp.json()
+    assert data["report_type"] == "submissions"
+
+
+
 
