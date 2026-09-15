@@ -105,6 +105,7 @@ export default function AdminPortal() {
   const [slotTargetAsmId, setSlotTargetAsmId] = useState<string>("");
   const [slotNameInput, setSlotNameInput] = useState<string>("Slot 1");
   const [isTogglingSlot, setIsTogglingSlot] = useState<boolean>(false);
+  const [isReleasingResults, setIsReleasingResults] = useState<boolean>(false);
 
   // --- Results & Ranking State ---
   const [resultsList, setResultsList] = useState<any[]>([]);
@@ -358,6 +359,41 @@ export default function AdminPortal() {
       showToast(e.message || "Error updating slot", "error");
     } finally {
       setIsTogglingSlot(false);
+    }
+  };
+
+  const handleReleaseResults = async (assessmentId: string, currentVisibility: string) => {
+    if (!adminToken) return;
+    const releasing = currentVisibility !== "IMMEDIATE";
+    const confirmMsg = releasing
+      ? "Release results? All candidates who have submitted will be able to see their score immediately."
+      : "Hide results? Candidates will no longer see their scores.";
+    if (!confirm(confirmMsg)) return;
+    try {
+      setIsReleasingResults(true);
+      const newVisibility = releasing ? "IMMEDIATE" : "NEVER";
+      const res = await fetch(`${API_BASE}/api/v1/admin/assessments/${assessmentId}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ result_visibility: newVisibility })
+      });
+      if (!checkAuth(res.status)) return;
+      const data = await res.json();
+      if (res.ok) {
+        showToast(
+          releasing
+            ? "✅ Results released! Candidates can now see their scores."
+            : "🔒 Results hidden. Candidates can no longer see their scores.",
+          releasing ? "success" : "info"
+        );
+        loadAssessments();
+      } else {
+        showToast(data.detail || "Failed to update result visibility", "error");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Error updating result visibility", "error");
+    } finally {
+      setIsReleasingResults(false);
     }
   };
 
@@ -2235,6 +2271,32 @@ export default function AdminPortal() {
                         >
                           {(asm.slot_open ?? true) ? <Lock size={12} /> : <Unlock size={12} />}
                           <span>{(asm.slot_open ?? true) ? "Lock Slot" : "Open Slot"}</span>
+                        </button>
+
+                        {/* Release / Hide Results Toggle */}
+                        <button
+                          type="button"
+                          disabled={isReleasingResults}
+                          onClick={() => handleReleaseResults(asm.id, asm.result_visibility)}
+                          title={asm.result_visibility === "IMMEDIATE" ? "Hide results from candidates" : "Release results so candidates can see their score"}
+                          style={{
+                            padding: "0.4rem 0.65rem",
+                            backgroundColor: asm.result_visibility === "IMMEDIATE"
+                              ? "rgba(245, 158, 11, 0.12)"
+                              : "rgba(16, 185, 129, 0.12)",
+                            border: `1px solid ${asm.result_visibility === "IMMEDIATE" ? "rgba(245,158,11,0.4)" : "rgba(16,185,129,0.4)"}`,
+                            color: asm.result_visibility === "IMMEDIATE" ? "#f59e0b" : "#10b981",
+                            borderRadius: "4px",
+                            cursor: isReleasingResults ? "wait" : "pointer",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            opacity: isReleasingResults ? 0.7 : 1
+                          }}
+                        >
+                          {asm.result_visibility === "IMMEDIATE" ? "🔒 Hide Results" : "🏆 Release Results"}
                         </button>
 
                         {asm.status !== "ACTIVE" ? (
