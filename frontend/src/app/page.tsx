@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Shield,
@@ -105,25 +105,36 @@ export default function CandidatePortalLanding() {
     }
   }, []);
 
-  // Auto-polling for Google Meet slot unlock
+  // Keep ref of myAssessments for interval polling without resetting timers
+  const myAssessmentsRef = useRef<AssessmentCard[]>(myAssessments);
+  useEffect(() => {
+    myAssessmentsRef.current = myAssessments;
+  }, [myAssessments]);
+
+  // Auto-polling for Google Meet slot unlock (silent background sync)
   useEffect(() => {
     if (!candidate?.email) return;
 
-    const hasLockedSlot = myAssessments.some(a => a.status === "NOT_STARTED" && a.slot_open === false);
-    if (!hasLockedSlot) return;
-
+    // Poll silently every 10 seconds only if there's an unstarted assessment with locked slot
     const interval = setInterval(() => {
-      fetchMyAssessments(candidate.email, candidatePassword || undefined);
-    }, 5000);
+      const hasLockedSlot = (myAssessmentsRef.current || []).some(
+        a => a.status === "NOT_STARTED" && a.slot_open === false
+      );
+      if (hasLockedSlot) {
+        fetchMyAssessments(candidate.email, candidatePassword || undefined, true);
+      }
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [candidate, myAssessments, candidatePassword]);
+  }, [candidate?.email, candidatePassword]);
 
-  // Fetch candidate's assigned examinations
-  const fetchMyAssessments = async (candEmail: string, candPwd?: string) => {
+  // Fetch candidate's assigned examinations (supports silent background refresh)
+  const fetchMyAssessments = async (candEmail: string, candPwd?: string, isBackground = false) => {
     try {
-      setLoadingAssessments(true);
-      setError(null);
+      if (!isBackground) {
+        setLoadingAssessments(true);
+        setError(null);
+      }
       const token = typeof window !== "undefined" ? sessionStorage.getItem("astranex_candidate_token") : null;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -139,16 +150,24 @@ export default function CandidatePortalLanding() {
 
       if (res.ok) {
         const data: AssessmentCard[] = await res.json();
-        setMyAssessments(data);
-      } else {
-        const errData = await res.json();
+        // Prevent state thrashing / component re-renders if the data hasn't changed
+        setMyAssessments(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+          return data;
+        });
+      } else if (!isBackground) {
+        const errData = await res.json().catch(() => ({}));
         setError(errData.detail || "Failed to load assigned assessments.");
       }
     } catch (err: any) {
-      console.error("Failed to load assessments:", err);
-      setError("Network connection issue while retrieving assessments.");
+      if (!isBackground) {
+        console.error("Failed to load assessments:", err);
+        setError("Network connection issue while retrieving assessments.");
+      }
     } finally {
-      setLoadingAssessments(false);
+      if (!isBackground) {
+        setLoadingAssessments(false);
+      }
     }
   };
 
