@@ -656,12 +656,23 @@ export default function AssessmentWorkspace() {
             <div style={{
               backgroundColor: "#0d172a",
               border: "1px solid rgba(56, 189, 248, 0.3)",
-              padding: "1rem",
+              padding: "1.1rem",
               borderRadius: "8px",
               marginBottom: "1.5rem"
             }}>
               <span style={{ fontSize: "0.8rem", color: "#8b9bb4", display: "block", letterSpacing: "0.05em", fontWeight: 700 }}>FINAL SCORE</span>
               <span style={{ fontSize: "1.9rem", fontWeight: 800, color: "#38bdf8" }}>{finalResult.total_score} pts</span>
+              <p style={{
+                fontSize: "0.8rem",
+                color: "#94a3b8",
+                marginTop: "0.6rem",
+                marginBottom: 0,
+                lineHeight: 1.45,
+                borderTop: "1px solid rgba(56, 189, 248, 0.15)",
+                paddingTop: "0.6rem"
+              }}>
+                <span style={{ color: "#38bdf8", fontWeight: 600 }}>Note:</span> This is the assessment score. Code Review and Shortlisting for next round result will be declared through email.
+              </p>
             </div>
           )}
 

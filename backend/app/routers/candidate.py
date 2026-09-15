@@ -934,7 +934,7 @@ async def finish_assessment_session(
         finished_at=ensure_tz_aware(session.finished_at),
         total_score=total_score,
         visibility=asm.result_visibility,
-        message="Your assessment has been submitted successfully. Thank you."
+        message="Your assessment has been submitted successfully. Code Review and Shortlisting for next round result will be declared through email."
     )
 
 @router.post("/telemetry/focus")

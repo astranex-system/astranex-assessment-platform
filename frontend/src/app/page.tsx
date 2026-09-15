@@ -725,26 +725,48 @@ export default function CandidatePortalLanding() {
                     {/* Action Buttons */}
                     <div>
                       {isCompleted ? (
-                        <div style={{
-                          width: "100%",
-                          padding: "0.75rem",
-                          backgroundColor: "rgba(16, 185, 129, 0.1)",
-                          border: "1px solid rgba(16, 185, 129, 0.3)",
-                          borderRadius: "6px",
-                          color: "#10b981",
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                          textAlign: "center",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "0.4rem"
-                        }}>
-                          <CheckCircle2 size={16} />
-                          <span>
-                            Examination Submitted
-                            {asm.score !== undefined && asm.score !== null ? ` • Score: ${asm.score}/${asm.total_marks} pts` : ""}
-                          </span>
+                        <div>
+                          <div style={{
+                            width: "100%",
+                            padding: "0.75rem",
+                            backgroundColor: "rgba(16, 185, 129, 0.1)",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            borderRadius: "6px",
+                            color: "#10b981",
+                            fontSize: "0.85rem",
+                            fontWeight: 600,
+                            textAlign: "center",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.4rem"
+                          }}>
+                            <CheckCircle2 size={16} />
+                            <span>
+                              Examination Submitted
+                              {asm.score !== undefined && asm.score !== null ? ` • Score: ${asm.score}/${asm.total_marks} pts` : ""}
+                            </span>
+                          </div>
+
+                          <div style={{
+                            marginTop: "0.6rem",
+                            padding: "0.55rem 0.75rem",
+                            backgroundColor: "rgba(56, 189, 248, 0.08)",
+                            border: "1px solid rgba(56, 189, 248, 0.2)",
+                            borderRadius: "6px",
+                            fontSize: "0.74rem",
+                            color: "#94a3b8",
+                            lineHeight: 1.45,
+                            textAlign: "center"
+                          }}>
+                            {asm.score !== undefined && asm.score !== null ? (
+                              <>
+                                <span style={{ color: "#38bdf8", fontWeight: 600 }}>Note:</span> This is the assessment score. Code Review and Shortlisting for next round result will be declared through email.
+                              </>
+                            ) : (
+                              <>Code Review and Shortlisting for next round result will be declared through email.</>
+                            )}
+                          </div>
                         </div>
                       ) : isExpired ? (
                         <div style={{
