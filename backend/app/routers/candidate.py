@@ -299,6 +299,15 @@ async def candidate_register(
         if not assessment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active assessments found. Please contact the administrator.")
 
+    # Verify if slot is open for registration/attempts
+    is_slot_open = getattr(assessment, "slot_open", True)
+    if is_slot_open is not None and not is_slot_open:
+        slot_name = getattr(assessment, "active_slot_name", "Slot") or "Slot"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This examination ({slot_name}) is currently locked by the invigilator. Please join your Google Meet session and wait for the invigilator to unlock the slot."
+        )
+
     # Create assessment session
     dummy_tok = secrets.token_urlsafe(32)
     token_obj = AssessmentToken(

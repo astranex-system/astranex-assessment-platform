@@ -337,12 +337,14 @@ export default function AssessmentWorkspace() {
   }, [session, isFinished]);
 
   const fetchSessionAndQuestions = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
       setLoading(true);
       const authHeaders = getAuthHeaders();
       const [sessRes, qRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/candidate/session/me`, { headers: authHeaders, credentials: "include" }),
-        fetch(`${API_BASE}/api/v1/candidate/questions`, { headers: authHeaders, credentials: "include" })
+        fetch(`${API_BASE}/api/v1/candidate/session/me`, { headers: authHeaders, credentials: "include", signal: controller.signal }),
+        fetch(`${API_BASE}/api/v1/candidate/questions`, { headers: authHeaders, credentials: "include", signal: controller.signal })
       ]);
 
       if (sessRes.status === 401 || qRes.status === 401) {
@@ -378,8 +380,12 @@ export default function AssessmentWorkspace() {
         setIsFinished(true);
       }
     } catch (err: any) {
-      setError(err.message || "Failed to load assessment data.");
+      const isTimeout = err?.name === "AbortError";
+      setError(isTimeout
+        ? "Connection timed out. The server is slow — please refresh the page to try again."
+        : err.message || "Failed to load assessment data.");
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
@@ -592,6 +598,37 @@ export default function AssessmentWorkspace() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: "var(--text-muted)" }}>
         <Shield className="animate-spin" size={32} color="var(--accent-cyan)" />
         <span style={{ marginLeft: "1rem", fontSize: "1.1rem" }}>Connecting to Secure AstraNex Server...</span>
+      </div>
+    );
+  }
+
+  if (error && questions.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "2rem", backgroundColor: "#030712" }}>
+        <div style={{ maxWidth: "480px", width: "100%", backgroundColor: "#060911", border: "1px solid #ef4444", borderRadius: "14px", padding: "2.5rem", textAlign: "center" }}>
+          <AlertTriangle size={48} color="#ef4444" style={{ margin: "0 auto 1.25rem" }} />
+          <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#fff", marginBottom: "0.6rem" }}>Connection Problem</h2>
+          <p style={{ color: "#94a3b8", fontSize: "0.9rem", marginBottom: "1.5rem", lineHeight: 1.6 }}>{error}</p>
+          <button
+            type="button"
+            onClick={() => { setError(null); fetchSessionAndQuestions(); }}
+            style={{
+              padding: "0.65rem 1.6rem",
+              backgroundColor: "#0ea5e9",
+              border: "none",
+              borderRadius: "8px",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              cursor: "pointer"
+            }}
+          >
+            Retry Connection
+          </button>
+          <p style={{ color: "#475569", fontSize: "0.78rem", marginTop: "1rem" }}>
+            If this keeps happening, try refreshing the page (F5).
+          </p>
+        </div>
       </div>
     );
   }

@@ -2181,3 +2181,55 @@ async def rescore_all_sessions_for_assessment(
         "errors": total_errors
     }
 
+
+class ResetCandidateSessionRequest(BaseModel):
+    email: str
+
+
+@router.post("/maintenance/reset-candidate-session")
+async def reset_candidate_session(
+    payload: ResetCandidateSessionRequest,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Deletes all active/submitted sessions and submissions for a candidate by email.
+    Allows candidate to restart the exam fresh when the invigilator unlocks the slot,
+    WITHOUT disqualification or losing their account.
+    """
+    email_clean = payload.email.strip().lower()
+    cand_stmt = select(Candidate).where(Candidate.email == email_clean)
+    cand_res = await db.execute(cand_stmt)
+    cand = cand_res.scalar_one_or_none()
+    if not cand:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No candidate found with email '{email_clean}'.")
+
+    from sqlalchemy import delete as sql_delete
+
+    sess_stmt = select(AssessmentSession).where(AssessmentSession.candidate_id == cand.id)
+    sess_res = await db.execute(sess_stmt)
+    sessions = sess_res.scalars().all()
+    sess_ids = [s.id for s in sessions]
+
+    if sess_ids:
+        await db.execute(sql_delete(EvaluationResult).where(EvaluationResult.session_id.in_(sess_ids)))
+        await db.execute(sql_delete(Submission).where(Submission.session_id.in_(sess_ids)))
+        await db.execute(sql_delete(AssessmentSession).where(AssessmentSession.id.in_(sess_ids)))
+
+    await db.execute(sql_delete(AssessmentToken).where(AssessmentToken.candidate_id == cand.id))
+    await db.commit()
+
+    await log_audit_event(
+        db, "RESET_CANDIDATE_SESSION", f"candidate:{cand.id}",
+        actor_id=admin.id, actor_role=admin.role.value,
+        metadata={"email": cand.email, "reset_sessions": len(sess_ids)}
+    )
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Candidate session for '{cand.email}' has been reset. The candidate can now start fresh when the slot is unlocked.",
+        "candidate_email": cand.email,
+        "reset_session_count": len(sess_ids)
+    }
+
+

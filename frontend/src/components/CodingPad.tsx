@@ -106,6 +106,13 @@ export default function CodingPad({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const cancelRunCode = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
 
   useEffect(() => {
     if (showConsole && consoleRef.current) {
@@ -115,6 +122,10 @@ export default function CodingPad({
 
   const handleRunCode = async () => {
     if (isRunning) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s hard timeout
+
     try {
       setIsRunning(true);
       setShowConsole(true);
@@ -126,6 +137,7 @@ export default function CodingPad({
         method: "POST",
         headers,
         credentials: "include",
+        signal: controller.signal,
         body: JSON.stringify({
           code: code || "",
           programming_language: selectedLang,
@@ -147,13 +159,17 @@ export default function CodingPad({
       const data = await res.json();
       setOutputResult(data);
     } catch (err: any) {
+      const isTimeout = err?.name === "AbortError";
       setOutputResult({
         status: "ERROR",
         stdout: "",
-        stderr: err.message || "Failed to contact execution server.",
+        stderr: isTimeout
+          ? "⏱ Execution timed out (25s). The server may be slow — please try again in a moment."
+          : err.message || "Failed to contact execution server.",
         execution_time: 0.0
       });
     } finally {
+      clearTimeout(timeoutId);
       setIsRunning(false);
     }
   };
@@ -471,39 +487,54 @@ export default function CodingPad({
             <span>Input</span>
           </button>
 
-          {/* RUN CODE BUTTON */}
-          <button
-            type="button"
-            onClick={handleRunCode}
-            disabled={isRunning}
-            title="Execute code in sandbox and see output"
-            style={{
-              padding: "0.32rem 0.85rem",
-              backgroundColor: isRunning ? "#064e3b" : "#059669",
-              border: "1px solid #10b981",
-              color: "#ffffff",
-              borderRadius: "5px",
-              cursor: isRunning ? "not-allowed" : "pointer",
-              fontSize: "0.78rem",
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: "0.35rem",
-              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)"
-            }}
-          >
-            {isRunning ? (
-              <>
-                <Loader2 size={13} className="animate-spin" />
-                <span>Running...</span>
-              </>
-            ) : (
-              <>
-                <Play size={13} fill="#ffffff" />
-                <span>Run Code</span>
-              </>
-            )}
-          </button>
+          {/* RUN CODE / CANCEL BUTTON */}
+          {isRunning ? (
+            <button
+              type="button"
+              onClick={cancelRunCode}
+              title="Cancel execution"
+              style={{
+                padding: "0.32rem 0.85rem",
+                backgroundColor: "#7f1d1d",
+                border: "1px solid #ef4444",
+                color: "#ffffff",
+                borderRadius: "5px",
+                cursor: "pointer",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                boxShadow: "0 2px 8px rgba(239,68,68,0.3)"
+              }}
+            >
+              <Loader2 size={13} className="animate-spin" />
+              <span>Running... (Cancel)</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRunCode}
+              title="Execute code in sandbox and see output"
+              style={{
+                padding: "0.32rem 0.85rem",
+                backgroundColor: "#059669",
+                border: "1px solid #10b981",
+                color: "#ffffff",
+                borderRadius: "5px",
+                cursor: "pointer",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)"
+              }}
+            >
+              <Play size={13} fill="#ffffff" />
+              <span>Run Code</span>
+            </button>
+          )}
 
           {/* Fullscreen Toggle */}
           <button
