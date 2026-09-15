@@ -16,7 +16,11 @@ import {
   ChevronUp,
   ChevronDown,
   Clock,
-  AlertCircle
+  AlertCircle,
+  BookOpen,
+  CheckCircle,
+  HelpCircle,
+  Columns
 } from "lucide-react";
 
 interface CodingPadProps {
@@ -27,6 +31,10 @@ interface CodingPadProps {
   saveMessage?: string | null;
   getAuthHeaders?: () => Record<string, string>;
   apiBase?: string;
+  questionText?: string;
+  section?: string;
+  difficulty?: string;
+  marks?: number;
 }
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -630,7 +638,8 @@ export default function CodingPad({
         <div style={{
           backgroundColor: "#050810",
           borderTop: "2px solid " + (outputResult?.status === "SUCCESS" ? "#10b981" : (outputResult?.status ? "#ef4444" : "#1e293b")),
-          maxHeight: "220px",
+          height: "220px",
+          flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
@@ -642,7 +651,8 @@ export default function CodingPad({
             justifyContent: "space-between",
             padding: "0.4rem 1rem",
             backgroundColor: "#080d1a",
-            borderBottom: "1px solid #131c30"
+            borderBottom: "1px solid #131c30",
+            flexShrink: 0
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Terminal size={13} color={outputResult?.status === "SUCCESS" ? "#10b981" : "#38bdf8"} />
@@ -689,12 +699,13 @@ export default function CodingPad({
             </div>
           </div>
 
-          {/* Console Content Area */}
+          {/* Console Content Area (Scrollable) */}
           <div style={{
+            flex: 1,
             padding: "0.6rem 1rem",
             overflowY: "auto",
-            maxHeight: "170px",
-            fontSize: "0.8rem",
+            overflowX: "auto",
+            fontSize: "0.85rem",
             lineHeight: "1.5"
           }}>
             {isRunning && (
@@ -708,7 +719,7 @@ export default function CodingPad({
                 {outputResult.stdout && (
                   <div>
                     <div style={{ color: "#38bdf8", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>STDOUT:</div>
-                    <pre style={{ margin: 0, color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                    <pre style={{ margin: 0, color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit" }}>
                       {outputResult.stdout}
                     </pre>
                   </div>
@@ -717,7 +728,7 @@ export default function CodingPad({
                 {outputResult.stderr && (
                   <div style={{ marginTop: outputResult.stdout ? "0.5rem" : 0 }}>
                     <div style={{ color: "#ef4444", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>ERROR / STDERR:</div>
-                    <pre style={{ margin: 0, color: "#fca5a5", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                    <pre style={{ margin: 0, color: "#fca5a5", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit" }}>
                       {outputResult.stderr}
                     </pre>
                   </div>
