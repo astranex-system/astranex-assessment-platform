@@ -3,6 +3,7 @@ import csv
 import io
 import json
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
