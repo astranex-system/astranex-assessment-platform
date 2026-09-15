@@ -722,9 +722,29 @@ export default function CodingPad({
             )}
 
             {!isRunning && outputResult && (
-              <>
+              <div>
+                {/* Status Badge Banner if Error */}
+                {outputResult.status !== "SUCCESS" && (
+                  <div style={{
+                    padding: "0.4rem 0.65rem",
+                    backgroundColor: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    borderRadius: "4px",
+                    color: "#f87171",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    marginBottom: "0.6rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem"
+                  }}>
+                    <AlertCircle size={14} />
+                    <span>Execution {outputResult.status.replace(/_/g, " ")}</span>
+                  </div>
+                )}
+
                 {outputResult.stdout && (
-                  <div>
+                  <div style={{ marginBottom: "0.5rem" }}>
                     <div style={{ color: "#38bdf8", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>STDOUT:</div>
                     <pre style={{ margin: 0, color: "#e2e8f0", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit" }}>
                       {outputResult.stdout}
@@ -733,7 +753,7 @@ export default function CodingPad({
                 )}
 
                 {outputResult.stderr && (
-                  <div style={{ marginTop: outputResult.stdout ? "0.5rem" : 0 }}>
+                  <div>
                     <div style={{ color: "#ef4444", fontSize: "0.7rem", fontWeight: 700, marginBottom: "0.2rem" }}>ERROR / STDERR:</div>
                     <pre style={{ margin: 0, color: "#fca5a5", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "inherit" }}>
                       {outputResult.stderr}
@@ -741,12 +761,12 @@ export default function CodingPad({
                   </div>
                 )}
 
-                {!outputResult.stdout && !outputResult.stderr && (
+                {!outputResult.stdout && !outputResult.stderr && outputResult.status === "SUCCESS" && (
                   <div style={{ color: "#94a3b8", fontStyle: "italic" }}>
                     Program executed successfully with no output returned.
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>
