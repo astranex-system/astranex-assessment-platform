@@ -82,6 +82,11 @@ export default function CandidatePortalLanding() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Results Modal State
+  const [resultsModalOpen, setResultsModalOpen] = useState(false);
+  const [resultsData, setResultsData] = useState<any>(null);
+  const [loadingResults, setLoadingResults] = useState(false);
+
   // Check existing candidate session on mount
   useEffect(() => {
     const savedEmail = sessionStorage.getItem("astranex_candidate_email");
@@ -168,6 +173,42 @@ export default function CandidatePortalLanding() {
       if (!isBackground) {
         setLoadingAssessments(false);
       }
+    }
+  };
+
+  // Fetch detailed results for a specific assessment
+  const fetchMyResults = async (assessmentId: string) => {
+    if (!candidate) return;
+    try {
+      setLoadingResults(true);
+      setResultsModalOpen(true);
+      setResultsData(null);
+
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("astranex_candidate_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE}/api/v1/candidate/my-results`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email: candidate.email,
+          password: candidatePassword || undefined,
+          assessment_id: assessmentId
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setResultsData(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setResultsData({ error: errData.detail || "Failed to load results." });
+      }
+    } catch (err: any) {
+      setResultsData({ error: err.message || "Network error loading results." });
+    } finally {
+      setLoadingResults(false);
     }
   };
 
@@ -786,6 +827,33 @@ export default function CandidatePortalLanding() {
                               <>Code Review and Shortlisting for next round result will be declared through email.</>
                             )}
                           </div>
+
+                          {/* View Results Button */}
+                          {asm.score !== undefined && asm.score !== null && (
+                            <button
+                              type="button"
+                              onClick={() => fetchMyResults(asm.id)}
+                              style={{
+                                marginTop: "0.6rem",
+                                width: "100%",
+                                padding: "0.65rem",
+                                backgroundColor: "rgba(56, 189, 248, 0.1)",
+                                border: "1px solid rgba(56, 189, 248, 0.3)",
+                                borderRadius: "6px",
+                                color: "#38bdf8",
+                                fontSize: "0.82rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "0.4rem"
+                              }}
+                            >
+                              <Award size={15} />
+                              <span>View Results & Submissions</span>
+                            </button>
+                          )}
                         </div>
                       ) : isExpired ? (
                         <div style={{
@@ -1314,6 +1382,176 @@ export default function CandidatePortalLanding() {
           </a>
         </div>
       </div>
+
+      {/* Results Modal */}
+      {resultsModalOpen && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.8)", zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "1rem"
+        }}>
+          <div style={{
+            width: "100%", maxWidth: "800px", maxHeight: "90vh",
+            backgroundColor: "#0a0f1e", border: "1px solid #1e293b",
+            borderRadius: "14px", display: "flex", flexDirection: "column",
+            overflow: "hidden"
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: "1.25rem 1.5rem",
+              borderBottom: "1px solid #1e293b",
+              display: "flex", justifyContent: "space-between", alignItems: "center"
+            }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#fff", margin: 0 }}>
+                  {resultsData?.assessment_title || "Assessment Results"}
+                </h2>
+                {resultsData && !resultsData.error && (
+                  <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem", fontSize: "0.8rem" }}>
+                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>
+                      Score: {resultsData.total_score}/{resultsData.total_marks}
+                    </span>
+                    <span style={{
+                      color: resultsData.passed ? "#10b981" : "#ef4444",
+                      fontWeight: 700
+                    }}>
+                      {resultsData.passed ? "✅ PASSED" : "❌ NOT PASSED"}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => { setResultsModalOpen(false); setResultsData(null); }}
+                style={{
+                  background: "transparent", border: "none", color: "#94a3b8",
+                  cursor: "pointer", fontSize: "1.2rem", padding: "0.25rem"
+                }}
+              >✕</button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem" }}>
+              {loadingResults && (
+                <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
+                  <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 0.75rem" }} />
+                  <p>Loading your results...</p>
+                </div>
+              )}
+
+              {resultsData?.error && (
+                <div style={{
+                  padding: "1.5rem", textAlign: "center",
+                  backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                  borderRadius: "8px", color: "#f87171"
+                }}>
+                  <AlertTriangle size={24} style={{ margin: "0 auto 0.5rem" }} />
+                  <p style={{ fontWeight: 600 }}>{resultsData.error}</p>
+                </div>
+              )}
+
+              {resultsData && !resultsData.error && resultsData.questions && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {resultsData.questions.map((q: any, idx: number) => (
+                    <div key={q.question_id} style={{
+                      backgroundColor: "#060911",
+                      border: `1px solid ${q.is_correct ? "rgba(16,185,129,0.3)" : q.is_correct === false ? "rgba(239,68,68,0.3)" : "#1e293b"}`,
+                      borderRadius: "10px", padding: "1rem 1.25rem"
+                    }}>
+                      {/* Question Header */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{
+                            backgroundColor: "#1e293b", color: "#94a3b8",
+                            padding: "0.15rem 0.5rem", borderRadius: "4px",
+                            fontSize: "0.7rem", fontWeight: 700
+                          }}>Q{idx + 1}</span>
+                          <span style={{
+                            fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase",
+                            color: q.question_type === "CODING" ? "#a855f7" : q.question_type === "MCQ" ? "#38bdf8" : "#f59e0b"
+                          }}>{q.question_type}</span>
+                          <span style={{ fontSize: "0.68rem", color: "#64748b" }}>{q.section}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                          <span style={{
+                            fontSize: "0.78rem", fontWeight: 700,
+                            color: q.is_correct ? "#10b981" : q.is_correct === false ? "#ef4444" : "#f59e0b"
+                          }}>
+                            {q.score_earned}/{q.marks}
+                          </span>
+                          {q.is_correct === true && <CheckCircle size={14} color="#10b981" />}
+                          {q.is_correct === false && <X size={14} color="#ef4444" />}
+                        </div>
+                      </div>
+
+                      {/* Question Text */}
+                      <p style={{
+                        fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.75rem",
+                        lineHeight: 1.5, whiteSpace: "pre-wrap"
+                      }}>{q.question_text}</p>
+
+                      {/* MCQ Options */}
+                      {q.question_type === "MCQ" && q.options && q.options.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "0.5rem" }}>
+                          {q.options.map((opt: any) => (
+                            <div key={opt.id} style={{
+                              padding: "0.45rem 0.75rem",
+                              borderRadius: "6px",
+                              fontSize: "0.8rem",
+                              backgroundColor: opt.is_selected ? "rgba(56,189,248,0.12)" : "rgba(255,255,255,0.02)",
+                              border: `1px solid ${opt.is_selected ? "rgba(56,189,248,0.4)" : "#1e293b"}`,
+                              color: opt.is_selected ? "#38bdf8" : "#94a3b8",
+                              fontWeight: opt.is_selected ? 600 : 400
+                            }}>
+                              {opt.is_selected ? "● " : "○ "}{opt.option_text}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Text Response */}
+                      {q.question_type === "TEXT" && q.text_response && (
+                        <div style={{
+                          backgroundColor: "#050810", border: "1px solid #1e293b",
+                          borderRadius: "6px", padding: "0.6rem 0.8rem",
+                          fontSize: "0.8rem", color: "#e2e8f0", whiteSpace: "pre-wrap"
+                        }}>
+                          <span style={{ fontSize: "0.68rem", color: "#64748b", display: "block", marginBottom: "0.3rem", fontWeight: 700 }}>YOUR ANSWER:</span>
+                          {q.text_response}
+                        </div>
+                      )}
+
+                      {/* Code Response */}
+                      {q.question_type === "CODING" && q.code_response && (
+                        <div>
+                          <span style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700, marginBottom: "0.25rem", display: "block" }}>
+                            YOUR CODE ({q.programming_language || "python"}):
+                          </span>
+                          <pre style={{
+                            backgroundColor: "#050810", border: "1px solid #1e293b",
+                            borderRadius: "6px", padding: "0.6rem 0.8rem",
+                            fontSize: "0.75rem", color: "#e2e8f0",
+                            overflow: "auto", maxHeight: "200px",
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                            whiteSpace: "pre", margin: 0
+                          }}>{q.code_response}</pre>
+                        </div>
+                      )}
+
+                      {/* Unanswered */}
+                      {!q.selected_option_id && !q.text_response && !q.code_response && (
+                        <div style={{ fontSize: "0.78rem", color: "#64748b", fontStyle: "italic" }}>
+                          Not answered
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

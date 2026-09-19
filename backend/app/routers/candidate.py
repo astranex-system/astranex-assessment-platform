@@ -9,13 +9,15 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import (
     AssessmentToken, AssessmentSession, Assessment, Candidate, Question, QuestionOption,
-    Submission, SessionStatus, ResultVisibility, AuditLog, QuestionType
+    Submission, SessionStatus, ResultVisibility, AuditLog, QuestionType, EvaluationResult,
+    CandidateAssessmentAssignment
 )
 from app.schemas.candidate import (
     StartSessionRequest, CandidateRegisterRequest, CandidateLoginRequest, PublicAssessmentOut, SubmissionRequest,
     CandidateSessionMeOut, CandidateQuestionOut, CandidateSubmissionResultOut,
     CandidateFinalResultOut, CandidateAssessmentOut, CandidateQuestionOptionOut,
-    CandidateSubmissionStateOut, FocusLossTelemetryRequest, RunCodeRequest, RunCodeResultOut
+    CandidateSubmissionStateOut, FocusLossTelemetryRequest, RunCodeRequest, RunCodeResultOut,
+    CandidateMyResultsOut, CandidateQuestionResultOut, CandidateResultOptionOut
 )
 from app.dependencies import get_current_candidate_session
 from app.security import (
@@ -935,6 +937,136 @@ async def finish_assessment_session(
         total_score=total_score,
         visibility=asm.result_visibility,
         message="Your assessment has been submitted successfully. Code Review and Shortlisting for next round result will be declared through email."
+    )
+
+@router.post("/my-results", response_model=CandidateMyResultsOut)
+async def get_candidate_results(
+    payload: CandidateLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns detailed question-wise results and candidate submissions
+    for a completed assessment. Only works when result_visibility == IMMEDIATE.
+    """
+    email_clean = payload.email.strip().lower()
+
+    # Authenticate candidate
+    cand_stmt = select(Candidate).where(Candidate.email == email_clean)
+    cand_res = await db.execute(cand_stmt)
+    candidate = cand_res.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="No account found with this email.")
+
+    # Check password or token auth
+    authenticated = False
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        token_payload = decode_access_token(token)
+        if token_payload and token_payload.get("role") == "candidate":
+            cand_id_in_tok = token_payload.get("candidate_id") or token_payload.get("sub")
+            if cand_id_in_tok == candidate.id:
+                authenticated = True
+
+    if not authenticated:
+        if not payload.password:
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        if candidate.password_hash and not verify_password(payload.password, candidate.password_hash):
+            raise HTTPException(status_code=401, detail="Incorrect password.")
+
+    # Find latest submitted session
+    sess_stmt = (
+        select(AssessmentSession)
+        .where(
+            AssessmentSession.candidate_id == candidate.id,
+            AssessmentSession.status == SessionStatus.SUBMITTED
+        )
+        .order_by(AssessmentSession.finished_at.desc())
+    )
+    if payload.assessment_id:
+        sess_stmt = sess_stmt.where(AssessmentSession.assessment_id == payload.assessment_id)
+
+    sess_res = await db.execute(sess_stmt)
+    session = sess_res.scalars().first()
+    if not session:
+        raise HTTPException(status_code=404, detail="No submitted assessment session found.")
+
+    # Fetch assessment
+    asm_stmt = select(Assessment).where(Assessment.id == session.assessment_id)
+    asm_res = await db.execute(asm_stmt)
+    asm = asm_res.scalar_one()
+
+    if asm.result_visibility != ResultVisibility.IMMEDIATE:
+        raise HTTPException(status_code=403, detail="Results have not been released yet. Please check back later.")
+
+    # Fetch questions with options
+    q_stmt = (
+        select(Question)
+        .options(selectinload(Question.options))
+        .where(Question.assessment_id == asm.id)
+        .order_by(Question.display_order)
+    )
+    q_res = await db.execute(q_stmt)
+    questions = q_res.scalars().all()
+
+    # Fetch submissions
+    sub_stmt = select(Submission).where(Submission.session_id == session.id)
+    sub_res = await db.execute(sub_stmt)
+    submissions = {s.question_id: s for s in sub_res.scalars().all()}
+
+    # Fetch evaluation results
+    eval_stmt = select(EvaluationResult).where(EvaluationResult.session_id == session.id)
+    eval_res = await db.execute(eval_stmt)
+    evals_by_sub = {e.submission_id: e for e in eval_res.scalars().all()}
+
+    # Build per-question results
+    question_results = []
+    total_score = 0.0
+    for q in questions:
+        sub = submissions.get(q.id)
+        eval_r = evals_by_sub.get(sub.id) if sub else None
+        score = eval_r.score_earned if eval_r else 0.0
+        total_score += score
+
+        # Build options list for MCQ
+        options_out = []
+        selected_option_text = None
+        for opt in sorted(q.options, key=lambda o: o.display_order):
+            is_selected = (sub and sub.selected_option_id == opt.id) if sub else False
+            if is_selected:
+                selected_option_text = opt.option_text
+            options_out.append(CandidateResultOptionOut(
+                id=opt.id,
+                option_text=opt.option_text,
+                is_selected=is_selected
+            ))
+
+        question_results.append(CandidateQuestionResultOut(
+            question_id=q.id,
+            question_text=q.question_text,
+            question_type=q.question_type.value if hasattr(q.question_type, 'value') else str(q.question_type),
+            section=getattr(q, 'section', 'General') or 'General',
+            marks=q.marks,
+            score_earned=round(score, 2),
+            is_correct=eval_r.is_correct if eval_r else None,
+            selected_option_id=sub.selected_option_id if sub else None,
+            selected_option_text=selected_option_text,
+            text_response=sub.text_response if sub else None,
+            code_response=sub.code_response if sub else None,
+            programming_language=sub.programming_language if sub else None,
+            options=options_out
+        ))
+
+    return CandidateMyResultsOut(
+        assessment_title=asm.title,
+        assessment_id=asm.id,
+        total_score=round(total_score, 2),
+        total_marks=asm.total_marks or sum(q.marks for q in questions),
+        passing_marks=asm.passing_marks or 60.0,
+        passed=total_score >= (asm.passing_marks or 60.0),
+        submitted_at=ensure_tz_aware(session.finished_at),
+        questions=question_results
     )
 
 @router.post("/telemetry/focus")

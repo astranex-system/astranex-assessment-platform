@@ -138,3 +138,34 @@ class CandidateFinalResultOut(BaseModel):
     total_score: Optional[float] = None  # Populated only if result_visibility == IMMEDIATE
     visibility: ResultVisibility
     message: str
+
+# --- Candidate Results View (post-exam, when results are released) ---
+class CandidateQuestionResultOut(BaseModel):
+    question_id: str
+    question_text: str
+    question_type: str
+    section: str = "General"
+    marks: float
+    score_earned: float = 0.0
+    is_correct: Optional[bool] = None
+    selected_option_id: Optional[str] = None
+    selected_option_text: Optional[str] = None
+    text_response: Optional[str] = None
+    code_response: Optional[str] = None
+    programming_language: Optional[str] = None
+    options: List["CandidateResultOptionOut"] = []
+
+class CandidateResultOptionOut(BaseModel):
+    id: str
+    option_text: str
+    is_selected: bool = False
+
+class CandidateMyResultsOut(BaseModel):
+    assessment_title: str
+    assessment_id: str
+    total_score: float
+    total_marks: float
+    passing_marks: float
+    passed: bool
+    submitted_at: Optional[datetime] = None
+    questions: List[CandidateQuestionResultOut] = []
